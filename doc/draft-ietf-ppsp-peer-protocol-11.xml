@@ -35,7 +35,7 @@
 <?rfc subcompact="no" ?>
 <!-- keep one blank line between list items -->
 <!-- end of list of popular I-D processing instructions -->
-<rfc category="std" docName="draft-ietf-ppsp-peer-protocol-10" ipr="trust200902">
+<rfc category="std" docName="draft-ietf-ppsp-peer-protocol-11" ipr="trust200902">
   <!-- category values: std, bcp, info, exp, and historic
      ipr values: full3667, noModification3667, noDerivatives3667
      you can add the attributes updates="NNNN" and obsoletes="NNNN" 
@@ -132,7 +132,7 @@
 </author>
 
 
-<date month="June" year="2014" />
+<date month="October" year="2014" />
 
     <!-- If the month and year are both specified and are the current ones, xml2rfc will fill 
          in the current day for you. If only the current year is specified, xml2rfc will fill 
@@ -264,12 +264,12 @@ protocol (UDP, etc.). The datagram is PPSPP's Protocol Data Unit (PDU).
 </t>
 
 <t hangText="content"><vspace blankLines="0"/>
-Either a live transmission, a pre-recorded multimedia asset, or a file.
+Either a live transmission or a pre-recorded multimedia asset.
 </t>
 
 <t hangText="chunk"><vspace blankLines="0"/>
 The basic unit in which the content is divided. E.g. a block of N 
-kilobyte.
+kilobyte. A chunk may be of variable size.
 </t>
 
 <t hangText="chunk ID"><vspace blankLines="0"/>
@@ -305,7 +305,7 @@ whether a requested chunk has been maliciously modified by the sending peer.
 
 <t hangText="hash"><vspace blankLines="0"/>
 The result of applying a cryptographic hash function, more specifically 
-a modification detection code (MDC) <xref target="HAC01" />, such as SHA-1 
+a modification detection code (MDC) <xref target="HAC01" />, such as SHA-256 
 <xref target="FIPS180-4" />, to a piece of data. 
 </t>
 
@@ -320,6 +320,14 @@ the concatenation of the two child hashes
 The root in a Merkle hash tree calculated recursively from the content 
 (see <xref target="sec_intprot_merkle"/>).
 </t>
+
+
+<t hangText="munro hash"><vspace blankLines="0"/>
+The hash of a subtree that is the unit of signing in the Unified Merkle Tree 
+content authentication scheme for live streaming 
+(see <xref target="sec_live_merkle_sigmunro"/>).
+</t>
+
 
 <t hangText="swarm"><vspace blankLines="0"/>
 A group of peers participating in the distribution of the same content.
@@ -456,7 +464,7 @@ yet have, C's next datagram includes a REQUEST for that chunk.
 <t>
 Peer D also sends HAVE messages to A when it downloads chunks from other peers.
 When D is willing to accept REQUESTs from A, D sends a datagram with
-an UNCHOKE message to inform A. If B or C decide to choke A they sending a CHOKE
+an UNCHOKE message to inform A. If B or C decide to choke A they send a CHOKE
 message and A should then re-request from other peers. B and C may continue to 
 send HAVE, REQUEST, or periodic KEEPALIVE messages such that A keeps sending 
 them HAVE messages.
@@ -700,42 +708,31 @@ responding to REQUESTs is OPTIONAL, see <xref target="sec_msgs_REQUEST"/>.
 Peer address exchange messages (or PEX messages for short) are common in 
 many peer-to-peer protocols. They allow peers to exchange the transport addresses
 of the peers they are currently interacting with, thereby reducing the need
-to contact a central tracker (or DHT) to discovery new peers.  The strength 
-of this mechanism is therefore that it enables decentralized peer discovery: 
+to contact a central tracker (or Distributed Hash Table) to discovery new peers.  
+The strength of this mechanism is therefore that it enables decentralized peer discovery: 
 after an initial bootstrap no central tracker is needed anymore. Its weakness 
-is that it enables a number of attacks, so it should not be used outside a 
-benign environment unless extra security measures are in place.
+is that it enables a number of attacks, so it should not be used on the Internet
+unless extra security measures are in place.
 </t>
 <t>
-PPSPP supports peer-address exchange in benign and potentially hostile 
-environments, as an OPTIONAL feature (not mandatory to implement). The general
-mechanism works as follows. To obtain some peer addresses a peer A MAY send a 
-PEX_REQ message to peer B. Peer B MAY respond with one or more PEX_RES messages.
-PPSPP supports three types of PEX_RES reply messages, each containing the 
-address of a single peer Ci. The address in the PEX_RES message MUST be of 
+PPSPP supports peer-address exchange on the Internet and in benign private 
+networks, as an OPTIONAL feature (not mandatory to implement) under certain conditions. 
+The general mechanism works as follows. To obtain some peer addresses a peer A MAY send a 
+PEX_REQ message to peer B. Peer B MAY respond with one or more PEX_REScert messages.
+Logically, a PEX_REScert reply message contains the address of a single peer Ci. 
+The address in the PEX_REScert message MUST be of 
 a peer B has exchanged messages with in the last 60 seconds to guarantee 
 liveliness. Upon receipt, peer A may contact any or none of the returned peers 
-Ci. Alternatively, peers MAY ignore PEX_REQ and PEX_RES messages if uninterested
+Ci. Alternatively, peers MAY ignore PEX_REQ and PEX_REScert messages if uninterested
 in obtaining new peers or because of security considerations (rate limiting) 
 or any other reason. The PEX messages can be used to construct a dedicated 
 tracker peer.
 </t>
 <t>
-As indicated, there are three types of PEX_RES messages: PEX_RESv4 containing 
-a single IPv4 address and port, PEX_RESv6 containing a single IPv6 address and 
-port, and a PEX_REScert message. The PEX_RESv4 and PEX_RESv6 MUST only be used 
-in a benign environment, as they provide no guarantees that the host addressed 
-actually participates in a PPSPP swarm. 
-</t>
-<t>
-To use PEX in PPSPP in a potentially hostile environment, such as the Internet,
-three conditions must be met:
+To use PEX in PPSPP on the Internet, two conditions must be met:
 <list style="numbers">
 <t> 
 Peer transport addresses must be relatively stable.
-</t>
-<t>
-PEX_REScert messages must be used instead of PEX_RESv4 and PEX_RESv6.
 </t>
 <t>
 A peer must not obtain all its peer addresses through PEX.    
@@ -743,8 +740,9 @@ A peer must not obtain all its peer addresses through PEX.
 </list>
 </t>
 <t>The full security analysis for PEX messages can be found in 
-<xref target="sec_sec_pex"/>. A PEX_REScert message carries a swarm-membership 
-certificate rather than an IP address and port. A membership certificate for 
+<xref target="sec_sec_pex"/>. Physically, a PEX_REScert message carries a 
+swarm-membership certificate rather than an IP address and port. A membership 
+certificate for 
 peer C states that peer C at address (ipC,portC) is part of swarm S at time T 
 and is cryptographically signed by an issuer. The receiver A can check the 
 certificate for a valid signature by a trusted issuer, the right swarm and 
@@ -760,11 +758,18 @@ signs the membership certificates and how public keys are distributed.
 tracker acts as the Certification Authority.
 </t>
 <t>
-In a potentially hostile environment, peers must also ensure that they
+In a hostile environment, such as the Internet, peers must also ensure that they
 do not end up interacting only with malicious peers when using the peer-address 
 exchange feature. To this extent, peers MUST ensure that part of their 
 connections are to peers whose addresses came from a trusted and secured 
 tracker (see <xref target="sec_sec_pex_eclipse"/>).
+</t>
+<t>
+In addition to the PEX_REScert, there are two other PEX reply messages.
+The PEX_RESv4 message contains a single IPv4 address and port. The PEX_RESv6 
+contains a single IPv6 address and port. They MUST only be used in a benign 
+environment, such as a private network, as they provide no guarantees that the 
+host addressed actually participates in a PPSPP swarm. 
 </t>
 <t>
 Once a PPSPP implementation has obtained a list of peers (either via PEX, from
@@ -1011,7 +1016,7 @@ to a single bin number (32-bit or 64-bit), as follows.
 <t>
 When a receiving peer has successfully checked the integrity of a chunk or
 interval of chunks it MUST send a HAVE message to all peers it wants to 
-interact with. The latter allows the HAVE message to be used as a method of 
+interact with. The ability to withhold HAVE messages allows them to be used as a method of 
 choking. The HAVE message MUST contain the chunk specification of the biggest
 complete interval of all chunks the receiver has received and checked so far
 that fully includes the interval of chunks just received. So the chunk 
@@ -1098,7 +1103,7 @@ The Merkle hash tree of a content asset that is divided into N chunks
 is constructed as follows. Note the construction does not assume chunks
 of content to be fixed size. Given a cryptographic hash function, more 
 specifically  a modification detection code (MDC) 
-<xref target="HAC01"/> , such as SHA1, the hashes of all the 
+<xref target="HAC01"/> , such as SHA-256, the hashes of all the 
 chunks of the content are calculated. Next, a binary tree of sufficient height 
 is created. Sufficient height means that the lowest level in the tree has 
 enough nodes to hold all chunk hashes in the set, as with bin numbering. 
@@ -1136,7 +1141,7 @@ C0  C1  C2  C3   C4  C5  C6   E
 =chunk index     ^^           = empty hash
 
 ]]></artwork>
-<postamble>The Merkle hash tree of an interval of width W=8</postamble>
+<postamble>The Merkle hash tree of a content asset with N=7 chunks</postamble>
 </figure>
 
 </section>
@@ -1243,7 +1248,8 @@ specification corresponding to a node ID is defined as the range of
 chunks formed by the leaves of the subtree rooted at the node. For example,
 node 3 in <xref target="fig_intprot_merkle"/> denotes chunks 0,2,4,6, 
 so the chunk specification should denote that interval. The list of INTEGRITY 
-messages MUST be sorted in order of the tree height of the nodes, descending. 
+messages MUST be sorted in order of the tree height of the nodes, descending 
+(the leaves are at height 0). 
 The DATA message MUST contain the chunk specification of the chunk and chunk 
 itself. A peer MAY send the required messages for multiple chunks in the same 
 datagram, depending on the encapsulation. 
@@ -1278,11 +1284,11 @@ In principle, the hash values of all these nodes will have to be sent to a peer
 once for it to verify all chunks. Hence the maximum on-the-wire overhead is
 hashsize * nnodes. However, the actual number of hashes transmitted can be 
 optimized as described in <xref target="sec_intprot_merkle_atomic"/>. 
-To see a peer can verify all chunks whilst receiving not all hashes, consider 
-the example tree in <xref target="sec_intprot_merkle"/>. 
 </t>
 
 <t>
+To see a peer can verify all chunks whilst receiving not all hashes, consider 
+the example tree in <xref target="sec_intprot_merkle"/>. 
 In case of a simple progressive download, of chunks 0,2,4,6, etc. the sending
 peer will send the following hashes:
 </t>
@@ -1316,25 +1322,21 @@ calculated and verified as part of earlier chunks.
 <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
 <section title="Automatic Detection of Content Size" anchor="sec_intprot_autosize">
 <t>
-In PPSPP, the root hash of a static content asset, such as a video file,
-along with some peer addresses is sufficient to start a download.
-In addition, PPSPP can reliably and automatically derive the size
-of such content from information received from the network when fixed
-sized chunks are used. As a result, it is not necessary to include 
-the size of the content asset as the metadata of the content,
-in addition to the root hash. Implementations of PPSPP MAY use 
+In PPSPP, the size of a static content asset, such as a video file,
+can be reliably and automatically derived from information received from the 
+network when fixed sized chunks are used. As a result, it is not necessary 
+to include the size of the content asset as the metadata of the content,
+for such assets. Implementations of PPSPP MAY use 
 this automatic detection feature. Note this feature is the only feature of 
-PPSPP that requires that a fixed-sized chunk is used.   
+PPSPP that requires that a fixed-sized chunk is used. This feature builds
+on the Merkle hash tree and the trusted root hash as swarm ID as follows.   
 </t>
 
 <!-- %% -->
 <section title="Peak Hashes" anchor="sec_intprot_autosize_peak">
 <t>
 The ability for a newcomer peer to detect the size of the content 
-depends heavily on the concept of peak hashes. Peak hashes,
-in general, enable two cornerstone features of PPSPP: reliable file 
-size detection and download/live streaming unification (see  
-<xref target="sec_live"/>). 
+depends heavily on the concept of peak hashes. 
 The concept of peak hashes depends on the concepts of filled and
 incomplete nodes. Recall that when constructing the binary trees
 for content verification and addressing the base of the tree may
@@ -1448,7 +1450,8 @@ be correct. B can then determine the exact file size as
 <t>
 A PPSPP implementation that wants to use automatic size detection MUST
 operate as follows. When a peer A sends a DATA message for the first time
-to a peer B, A MUST first send all the peak hashes for the content, unless B has 
+to a peer B, A MUST first send all the peak hashes for the content, 
+in INTEGRITY messages, unless B has 
 already signalled earlier in the exchange that it knows the peak hashes by 
 having acknowledged any chunk. If they are needed, the peak hashes MUST be sent 
 as an extra list of uncle hashes for the chunk, before the list of actual 
@@ -1523,9 +1526,9 @@ In particular, the swarm ID consists of a 1 byte Algorithm field that
 identifies the public key's cryptographic algorithm and determines the format 
 of the Public Key field that follows. The value of this Algorithm field is one 
 of the Domain Name System Security (DNSSEC) Algorithm Numbers 
-<xref target="IANADNSSECALGNUM"/>. The RSASHA1 <xref target="RFC4034"/>, 
-ECDSAP256SHA256 and ECDSAP384SHA384 <xref target="RFC6605"/> algorithms are 
-MANDATORY to implement. 
+<xref target="IANADNSSECALGNUM"/>. The RSASHA1 <xref target="RFC4034"/>,
+RSASHA256 <xref target="RFC5702"/>, and ECDSAP256SHA256 and ECDSAP384SHA384 
+<xref target="RFC6605"/> algorithms are MANDATORY to implement. 
 </t>
 <figure><artwork>
  0                   1                   2                   3
@@ -1679,7 +1682,7 @@ INTEGRITY message with the hash of node 10, and a DATA message with chunk 8.
 Upon receipt, peer P verifies the signature of the munro and expands its view 
 of the tree. Next, the peer computes the hash of chunk 8 and combines it with 
 the received hash of node 10, computing the expected hash of node 9. He can then
-verify the content of chunk 8 by computing the computed hash of node 9 with the 
+verify the content of chunk 8 by comparing the computed hash of node 9 with the 
 munro hash of the same node he just received, hence P has successfully verified 
 the integrity of chunk 8.
 </t>
@@ -1721,10 +1724,13 @@ announce the root hash to the tracking infrastructure and instantly seed the con
 <t>
 The digital signature algorithm used is determined by the Live Signature 
 Algorithm protocol option, see <xref target="sec_protopt_livesigalg"/>.
+
 The signature is computed over a concatenation of the on-the-wire
-representation of the chunk specification of the munro, a 64-bit NTP timestamp 
-<xref target="RFC5905"/>, and the munro hash, in that order. The timestamp is 
-the time signature that was made at the injector in UTC.     
+representation of the chunk specification of the munro node 
+(see <xref target="sec_live_merkle_sigmunro"/>), a timestamp in 64-bit NTP format 
+<xref target="RFC5905"/>, and the hash associated with the munro node, 
+in that order. The timestamp is the time signature that was made at the 
+injector in UTC.     
 </t>
 
 </section>
@@ -1824,7 +1830,7 @@ to influences how much data it can directly download to establish its prebuffer.
 If the window is smaller than the desired buffer, the fresh peer has to wait
 until the peers downloaded more of the stream before it can start playback. As 
 media buffers are generally specified in terms of a number of seconds, the size 
-of the discard window also related to the (average) bitrate of the stream. 
+of the discard window is also related to the (average) bitrate of the stream. 
 Finally, if a peer has little resources to store chunks and metadata it should 
 chose a small discard window.
 </t>
@@ -1843,7 +1849,8 @@ The HANDSHAKE message in PPSPP can contain the following protocol options.
 Unless stated otherwise,
 a protocol option consists of an 8-bit code followed by an 8-bit value. 
 Larger values are all encoded big-endian. Each protocol option is explained 
-in the following subsections. 
+in the following subsections. The list of protocol options MUST be sorted on 
+code value (ascending) in a HANDSHAKE message.
 </t>
 
 <texttable anchor="tab_id_proto_opt" title="PPSP Peer Protocol Options">
@@ -1859,7 +1866,8 @@ in the following subsections.
 <c>6</c>		<c>Chunk Addressing Method</c>
 <c>7</c>		<c>Live Discard Window</c>
 <c>8</c>		<c>Supported Messages</c>
-<c>9-254</c>		<c>Unassigned</c>
+<c>9</c>		<c>Chunk Size</c>
+<c>10-254</c>		<c>Unassigned</c>
 <c>255</c>		<c>End Option</c>
 	
 <postamble></postamble>
@@ -1894,6 +1902,7 @@ Defined values are listed in <xref target="tab_id_ver_num"/>.
 <preamble></preamble>
 <ttcol align="left">Version</ttcol>
 <ttcol align="left">Description</ttcol>
+<c>0</c>	   <c>Reserved</c>
 <c>1</c>	   <c>Protocol as described in this document</c>
 <c>2-255</c>	   <c>Unassigned</c>
 <postamble></postamble>
@@ -2009,7 +2018,7 @@ function semantics).
 <preamble></preamble>
 <ttcol align="left">Function</ttcol>
 <ttcol align="left">Description</ttcol>
-<c>0</c>	   <c>SHA1</c>
+<c>0</c>	   <c>SHA-1</c>
 <c>1</c>	   <c>SHA-224</c>
 <c>2</c>	   <c>SHA-256</c>
 <c>3</c>	   <c>SHA-384</c>
@@ -2018,8 +2027,8 @@ function semantics).
 <postamble></postamble>
 </texttable>
 <t>
-Implementations MUST support SHA1, see <xref target="sec_sec_hash"/>,
-which is also the default.    
+Implementations MUST support SHA-1 (see <xref target="sec_sec_hash"/>) and SHA-256.
+SHA-256 is the default.    
 </t>
 <figure><artwork>
  0                   1           
@@ -2038,7 +2047,8 @@ When the content integrity protection method is "Sign All" or
 "Unified Merkle Tree" this option MUST be defined. The code for this 
 option is 5. The 8-bit value of this option is one of the Domain Name System 
 Security (DNSSEC) Algorithm Numbers <xref target="IANADNSSECALGNUM"/>.  
-The RSASHA1 <xref target="RFC4034"/>, ECDSAP256SHA256 and ECDSAP384SHA384 
+The RSASHA1 <xref target="RFC4034"/>, RSASHA256 <xref target="RFC5702"/>, 
+ECDSAP256SHA256 and ECDSAP384SHA384 
 <xref target="RFC6605"/> algorithms are MANDATORY to implement.
 Default is ECDSAP256SHA256.
 </t>
@@ -2147,12 +2157,35 @@ store it as an array of bytes and truncate it to the last non-zero byte.
  0                   1                   2                   3
  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|0 0 0 0 0 0 1 0| SupMsgLen (8) |                               ~
+|0 0 0 0 1 0 0 0| SupMsgLen (8) |                               ~
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ~            Supported Messages Bitmap (variable, max 256)      ~
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 </artwork></figure>
 </section>
+
+<!-- %% -->
+<section title="Chunk Size" anchor="sec_protopt_chunksize">
+<t>
+A peer in a swarm MUST include the chunk size the swarm uses. The code
+for this option is 9. Its value is a 32-bit integer denoting the
+size of the chunks in bytes in big endian format. When variable chunk sizes
+are used, this option MUST be set to the special value 0xFFFFFFFF.
+<xref target="sec_encap_udp_chunksize"/> explains how content publishers can 
+determine a value for this option.
+</t>
+
+<figure><artwork>
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|0 0 0 0 1 0 0 1|       Chunk Size (32)                         ~
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~               |                                                
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+</section>
+
 
 </section>
 
@@ -2187,7 +2220,7 @@ a chunk and its required INTEGRITY messages can generally be carried inside a si
 datagram, following the Atomic Datagram Principle 
 (<xref target="sec_intprot_merkle_atomic"/>). Other considerations are the 
 hardware capabilities of the peers. Having large chunks and therefore less 
-chunks per mebibyte of content reduces processing costs. The chunk addressing 
+chunks per megabyte of content reduces processing costs. The chunk addressing 
 schemes can all work with different chunk sizes, see <xref target="sec_chunkaddr"/>.
 </t>
 <t>
@@ -2280,7 +2313,7 @@ As described in <xref target="sec_msgs_channels"/> PPSPP uses
 a multiplexing scheme, called channels, to allow multiple swarms to use the 
 same UDP port. In the UDP encapsulation, each datagram from peer A to peer B 
 is prefixed with the channel ID allocated by peer B. The peers learn about
-eachother's channel ID during the handshake as explained in a moment. 
+each other's channel ID during the handshake as explained in a moment. 
 A channel ID consists of 4 bytes and MUST be generated following the 
 requirements in <xref target="RFC4960"/> (Sec. 5.1.3).
 </t> 
@@ -2338,10 +2371,10 @@ where:
 <t>Destination Channel ID: 
 <list style="hanging">
 <t>If the message is sent by the initiating peer than it MUST be an all 0-zeros channel ID.</t>
-<t>If the message sent by the receiving peer than it MUST consist of the Source Channel ID from the sender's HANDSHAKE message</t>
+<t>If the message sent by the responding peer than it MUST consist of the Source Channel ID from the sender's HANDSHAKE message</t>
 </list>
 </t>
-<t>The octect 0x00: The HANDSHAKE message: 0x00</t>
+<t>The octet 0x00: The HANDSHAKE message: 0x00</t>
 <t>The Source Channel ID: A locally unused channel ID</t>
 <t>Protocol Options: A list of protocol options encoding the swarm's metadata, 
    as defined in <xref target="sec_protopt"/>.</t>
@@ -2351,7 +2384,7 @@ where:
 
 <t>
 A peer SHOULD explicitly close a channel by sending a HANDSHAKE message that 
-MUST contain an all 0-zeros channel ID and a list of protocol options. The
+MUST contain an all 0-zeros Source Channel ID and a list of protocol options. The
 list MUST be either empty or contain the maximum version number the sender 
 supports, following the Min/max versioning scheme defined in 
 <xref target="RFC6709"/>, Section 4.1. 
@@ -2387,11 +2420,6 @@ A HAVE message using 32-bit chunk ranges as Chunk Addressing method:
 where the first octet is the HAVE message (0x03), followed by the start chunk and 
 the end chunk describing the chunk range.
 </t>
-
-<t>
-(received and checked first four kilobytes of a file/stream)
-</t>
-
 
 </section>
 
@@ -2435,7 +2463,7 @@ A DATA message using 32-bit chunk ranges as Chunk Addressing method:
 </artwork></figure>
 <t>
 where the first octet is the DATA message (0x01), followed by the start chunk and 
-the end chunk describing the chunk range, the timestamp and the actual data.
+the end chunk describing the single chunk, the timestamp and the actual data.
 </t>
 
 </section>
@@ -2490,7 +2518,7 @@ of the hash depends on the protocol options.
 </t>
 <t>
 An INTEGRITY message using 32-bit chunk ranges as Chunk Addressing method and 
-SHA1 hash:
+a SHA-256 hash:
 </t>
 <figure><artwork>
 
@@ -2504,7 +2532,7 @@ SHA1 hash:
 |               |                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                                                               | 
-~                            Hash (160)                         ~
+~                            Hash (256)                         ~
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |               |
@@ -2512,8 +2540,8 @@ SHA1 hash:
 
 </artwork></figure>
 <t>
-where the first octet is the ACK message (0x02), followed by the start chunk and 
-the end chunk describing the chunk range, and the one-way delay sample.
+where the first octet is the INTEGRITY message (0x04), followed by the start chunk and 
+the end chunk describing the chunk range, and the hash.
 </t>
 
 
@@ -2560,8 +2588,8 @@ chunk and the end chunk describing the chunk range, the timestamp, and the Signa
 </t>
 <t>
 The length of the digital signature can be derived from the Live Signature 
-Algorithm protocol option and the swarm ID as follows. The first MANDATORY algorithm
-is RSASHA1. In that case, the swarm ID consists of a 1-byte Algorithm field 
+Algorithm protocol option and the swarm ID as follows. The first MANDATORY algorithms
+are RSASHA1 and RSASHA256. For those algorithms, the swarm ID consists of a 1-byte Algorithm field 
 followed by a RSA public key stored as a tuple (exponent length,exponent,modulus)
 <xref target="RFC3110"/>. Given the exponent length and the length of the 
 public key tuple in the swarm ID, the length of the modulus in bytes can be 
@@ -2664,7 +2692,7 @@ where the first octet is the UNCHOKE message (0x0b).
 <!-- %% -->
 <section title="PEX_REQ, PEX_RESv4, PEX_RESv6 and PEX_REScert" anchor="sec_encap_udp_PEX">
 <t>
-A PEX_REQ (0x06) message has no payload. A PEX_RES (0x05) message consists
+A PEX_REQ (0x06) message has no payload. A PEX_RESv4 (0x05) message consists
 of an IPv4 address in big endian format followed by a UDP port number
 in big endian format. A PEX_RESv6 (0x0c) message contains a 128-bit IPv6 
 address instead of an IPv4 one. If a PEX_REQ message does not originate from
@@ -2686,7 +2714,7 @@ A PEX_REQ message:
 where the first octet is the PEX_REQ message (0x06).
 </t>
 <t>
-A PEX_RES message:
+A PEX_RESv4 message:
 </t>
 <figure><artwork>
  0                   1                   2                   3
@@ -2698,7 +2726,7 @@ A PEX_RES message:
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 </artwork></figure>
 <t>
-where the first octet is the PEX_RES message (0x05), followed by the IPv4 
+where the first octet is the PEX_RESv4 message (0x05), followed by the IPv4 
 address and the port number.
 </t>
 <t>
@@ -2753,7 +2781,7 @@ the membership certificate, and the membership certificate.
 </t>
 <t>
 The URL contained in the name extension MUST follow the generic syntax for URLs 
-<xref target="RFC3986"/>, where its scheme component is "ppsp", the host in 
+<xref target="RFC3986"/>, where its scheme component is "file", the host in 
 the authority component is the DNS name or IP address of peer P, the port in 
 the authority component is the port of peer P, and the path contains the swarm 
 identifier for swarm S, in hexadecimal form. In particular, the preferred form 
@@ -2763,7 +2791,7 @@ the certificate is set with notBefore UTCTime set to T and notAfter UTCTime set
 to T plus some expiry time defined by the issuer. An example URL:
 <list style="hanging" hangIndent="4">
 <t>
-   ppsp://192.0.2.0:6778/e5a12c7ad2d8fab33c699d1e198d66f79fa610c3
+   file://192.0.2.0:6778/e5a12c7ad2d8fab33c699d1e198d66f79fa610c3
 </t>
 </list>
 </t>
@@ -2794,7 +2822,7 @@ A keepalive datagram:
 <!-- %% -->
 <section title="Detecting a Dead Peer" anchor="sec_encap_udp_detect_dead">
 <t>
-A guideline for declaring a peer dead consist of a 3 minute delay since
+A guideline for declaring a peer dead consists of a 3 minute delay since
 that last packet has been received from that peer, and at least 3 datagrams 
 were sent to that peer during the same period.
 </t>
@@ -2806,22 +2834,58 @@ were sent to that peer during the same period.
 <!-- %% -->
 <section title="Flow and Congestion Control" anchor="sec_encap_udp_control">
 <t>
-Explicit flow control is not necessary in PPSPP-over-UDP. In the case of
-video-on-demand the receiver will request data explicitly from peers and is 
-therefore in control of how much data is coming towards it. In the case of
+Explicit flow control is not required for PPSPP-over-UDP. In the case of
+video-on-demand, the receiver explicitly requests the content from peers, and 
+is therefore in control of how much data is coming towards it. In the case of
 live streaming, where a push-model may be used, the amount of data incoming
-is limited to the bitrate, which the receiver must be able to process otherwise
-it cannot play the stream. Should, for any reason, the receiver get saturated 
-with data that situation is perfectly detected by the congestion control.
+is limited to the stream bitrate, which the receiver must be able to process
+for a continuous playback. Should, for any reason, the receiver get saturated 
+with data, the congestion control at the sender side will detect the situation 
+and adjust the sending rate accordingly.
 </t>
 <t>
 PPSPP-over-UDP can support different congestion control algorithms. 
 At present, it uses the LEDBAT congestion control algorithm <xref target="RFC6817"/>. 
-LEDBAT is a delay-based congestion control algorithm that is used by millions
-of users everyday as part of the uTP transmission protocol of BitTorrent
+LEDBAT is a delay-based congestion control algorithm that is used everyday by 
+millions of users as part of the uTP transmission protocol of BitTorrent
 <xref target="LBT"/>,<xref target="LCOMPL"/> and is suitable for P2P streaming 
 <xref target="PPSPPERF"/>. 
 </t>
+<t>
+LEDBAT monitors the delay of the packets on the data path. It uses the one-way delay 
+variations to react early and limit the congestion that the stream may induce in 
+the network <xref target="RFC6817"/>. 
+Using LEDBAT enables PPSPP to serve the content to other interested peers after the 
+playback has finished (seeding), without disrupting the user. After the playback, the
+user might move to different tasks that use its network link, which are prioritized 
+over PPSPP traffic. Hence the user does not notice the background PPSPP traffic, which
+in turn increases the chances of seeding the content for a longer period of time.
+</t>
+<t>
+The property of reacting early is not a problem in a peer-to-peer system where 
+multiple sources offer the content. Considering the case of congestion near
+the sender, LEDBAT's early reaction impacts the transmission of chunks to the 
+receiver. However, for the receiver it is actually beneficial to learn early 
+that the transmission from a particular source is impacted. The receiver can then 
+choose to download time-critical chunks from other sources during its chunk picking phase.
+</t>   
+<t>
+If the bottleneck is near the receiver, the receiver is indeed unlucky 
+that transmissions from any source that runs through this bottleneck 
+will back off quite fast due to LEDBAT. For the rest of the network (and the 
+network operator), this is, however, beneficial as the video streaming system 
+will back off early enough and not contribute too much to the congestion. 
+</t>
+<t>
+The power of LEDBAT is that its behaviour can be configured. In the case
+of live streaming, a PPSPP deployer may want a more aggressive behaviour
+to ensure quality of service. In that case, LEDBAT can be configured to be 
+more aggressive. In particular, LEDBAT's queuing target delay value
+(TARGET in <xref target="RFC6817"/>) and other parameters can be adjusted such 
+that it acts as aggressive as TCP (or even more). Hence LEDBAT is an algorithm
+that works for many scenarios in a peer-to-peer context.
+</t>
+
 </section>
 
 
@@ -2858,11 +2922,12 @@ payload is a locally unused channel ID (0x00000001) and a list of protocol optio
 ~                             .....                             ~
 |1 0 0 0 0 1 1 0 1 0 1 0 1 0 1 0 1 0 1 1 0 0 0 0 0 0 1 1 1 0 1 1|
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|   Cont. Int.  |0 0 0 0 0 0 0 1| Mer.H.Tree F. |0 0 0 0 0 0 0 0|
+|   Cont. Int.  |0 0 0 0 0 0 0 1| Mer.H.Tree F. |0 0 0 0 0 0 1 0|
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|   Chunk Add.  |0 0 0 0 0 0 1 0|      End      |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
+|   Chunk Add.  |0 0 0 0 0 0 1 0|   Chunk Size  |0 0 0 0 0 0 0 0~
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0|      End      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 </artwork></figure>
 </t>
 
@@ -2871,10 +2936,11 @@ The protocol options are:
 <list style="hanging">
 <t>Version: 1</t>
 <t>Minimum supported Version: 1</t>
-<t>Swarm Identifier: A 20 bytes root hash (47a0...b03b) identifying the content.</t>
+<t>Swarm Identifier: A 32-byte root hash (47a0...b03b) identifying the content.</t>
 <t>Content Integrity Protection Method: Merkle Hash Tree.</t>
-<t>Merkle Tree Hash Function: SHA1.</t>
+<t>Merkle Tree Hash Function: SHA-256.</t>
 <t>Chunk Addressing Method: 32-bit chunk ranges.</t>
+<t>Chunk Size: 1024.</t>
 </list>
 </t>
 
@@ -2896,22 +2962,24 @@ followed by any other messages it wants to send.
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |0 0 0 0 1 0 0 0|    Version    |0 0 0 0 0 0 0 1|   Cont. Int.  |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|0 0 0 0 0 0 0 1| Mer.H.Tree F. |0 0 0 0 0 0 0 0|   Chunk Add.  |
+|0 0 0 0 0 0 0 1| Mer.H.Tree F. |0 0 0 0 0 0 1 0|   Chunk Add.  |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|0 0 0 0 0 0 1 0|      End      |      HAVE     |0 0 0 0 0 0 0 0|
+|0 0 0 0 0 0 1 0|  Chunk Size   |0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0~
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0|      End      |      HAVE     |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0|0 0 0 0 0 0 0 0|
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0|
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
+|0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0|0 0 0 0 0 0 0 0|
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 </artwork></figure>
 </t>
 
 <t>
 With the protocol options the receiving peer agrees on speaking protocol version 1, 
-on using the Merkle Hash Tree as Content Integrity Protection Method, SHA1 hash as 
-Merkle Tree Hash Function, and 32-bit chunk ranges as Chunk Addressing Method.
+on using the Merkle Hash Tree as Content Integrity Protection Method, SHA-256 hash as 
+Merkle Tree Hash Function, 32-bit chunk ranges as Chunk Addressing Method, 
+and Chunk Size 1024.
 Furthermore, it sends a HAVE message within the same datagram, announcing that it has
 locally available the first chunk of content.
 </t>
@@ -3025,7 +3093,7 @@ also adds a HAVE message for the chunk.
 <t>
 At this point the initiating peer has successfully retrieved the entire file.
 It then explicitly closes the connection by sending a HANDSHAKE message that 
-contains an all 0-zeros channel ID.
+contains an all 0-zeros Source Channel ID.
 </t>
 
 <figure><artwork>
@@ -3110,11 +3178,13 @@ and Raynor Vliegendhart.
 <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
 <section title="IANA Considerations" anchor="sec_iana">
 
-<t>IANA is to create the new registries defined below for the extensibility of 
-the protocol. For all registries, assignments consist of a name and its 
-associated value. Also for all registries, the "Unassigned" ranges designated 
-are governed by the policy 'IETF Review' as described in <xref target="RFC5226"/>.
-</t>
+<t>IANA is to create a new top-level registry called "Peer-to-Peer Streaming 
+Peer Protocol (PPSPP)", which will host the six new sub-registries defined 
+below for the extensibility  of the protocol.  For all registries, assignments
+consist of a name and its associated value.  Also for all registries, the 
+"Unassigned" ranges designated are governed by the policy 'IETF
+Review' as described in <xref target="RFC5226"/>.
+</t>    
 
 
 <section title="PPSP Peer Protocol Message Type Registry" anchor="sec_iana_reg_msg">
@@ -3226,7 +3296,7 @@ protocol options should be exploited to keep the URLs small.
 <t>
 The minimal information a tracking facility must return when queried for a list
 of peers for a swarm is as follows. Assuming the communication between tracking
-facility and requestor is protected, the facility must at least return for 
+facility and requester is protected, the facility must at least return for 
 each peer in the list its IP address, transport protocol identifier (i.e., UDP), 
 and transport protocol port number.
 </t>
@@ -3282,14 +3352,14 @@ can help identify trouble, see next section and
 <t>
 The PPSP tracker protocol may be used to gather information about all
 peers in a swarm, to obtain a global view of operation, according to 
-<xref target="RFC6972"/> (requirement PPSP-TP-REQ-3). 
+<xref target="RFC6972"/> (requirement PPSP.OAM.REQ-3). 
 </t>    
 </list>
 </t>
 
 <t>
 Basic operation of the protocol can be easily verified when a tracker 
-and swarm ID are known by starting a PPSPP download. Deep packet inspection for 
+and swarm metadata are known by starting a PPSPP download. Deep packet inspection for 
 DATA and ACK messages help to establish that actual content transfer is 
 happening and that the chunk availability signaling and integrity checking are 
 working.
@@ -3314,7 +3384,7 @@ discussing the considerations to make when choosing a value.
 <c>Chunk Size</c>					<c>var, 1024 bytes recommended</c>	<c><xref target="sec_encap_udp_chunksize"/></c>
 <c>Static Content Integrity Protection Method</c>	<c>1 (Merkle Hash Tree)</c>	<c><xref target="sec_protopt_intprot"/></c>
 <c>Live Content Integrity Protection Method</c>	        <c>3 (Unified Merkle Tree)</c>	<c><xref target="sec_protopt_intprot"/></c>		
-<c>Merkle Hash Tree Function</c>			<c>0 (SHA1)</c>			<c><xref target="sec_protopt_mhashfunc"/></c>
+<c>Merkle Hash Tree Function</c>			<c>2 (SHA-256)</c>			<c><xref target="sec_protopt_mhashfunc"/></c>
 <c>Live Signature Algorithm</c>				<c>13 (ECDSAP256SHA256)</c>		<c><xref target="sec_protopt_livesigalg"/></c>
 <c>Chunk Addressing Method</c>				<c>2 (32-bit chunk ranges)</c>	<c><xref target="sec_protopt_chunkaddr"/></c>
 <c>Live Discard Window</c>				<c>var</c>			<c><xref target="sec_live_disc"/>, <xref target="sec_protopt_livediscwin"/></c>
@@ -3421,7 +3491,7 @@ can be used with PPSPP.
 In addition, when the PPSPP tracker protocol is used, it provides 
 a built-in, application-level, performance measurement infrastructure for 
 	different metrics. See  <xref target="RFC6972"/> 
-(requirement PPSP-TP-REQ-3). 
+(requirement PPSP.OAM.REQ-3). 
 </t>    
 </section>    
 
@@ -3624,7 +3694,7 @@ can be provided by using public key cryptography and certification. In
 particular, a PEX_REScert message will carry swarm-membership certificates rather 
 than IP address and port. A membership certificate for peer B states that peer B 
 at address (ipB,portB) is part of swarm S at time T and is cryptographically 
-signed. The receiver A can check the cert for a valid signature, the right 
+signed. The receiver A can check the certificate for a valid signature, the right 
 swarm and liveliness and only then consider contacting B. These swarm-membership 
 certificates correspond to signed node descriptors in secure decentralized peer 
 sampling services <xref target="SPS"/>.
@@ -3725,7 +3795,7 @@ tracker to find new candidates.
 
 
 <!-- %% -->
-<section title="Support for Closed Swarms (PPSP.SEC.REQ-1)" anchor="sec_sec_cs">
+<section title="Support for Closed Swarms ([RFC6972] PPSP.SEC.REQ-1)" anchor="sec_sec_cs">
 <t>
 The Closed Swarms <xref target="CLOSED"/> and Enhanced Closed Swarms 
 <xref target="ECS"/> mechanisms provide swarm-level access control. The basic 
@@ -3741,7 +3811,7 @@ The exact mapping of ECS to PPSPP is defined in
 </section>
 
 <!-- %% -->
-<section title="Confidentiality of Streamed Content (PPSP.SEC.REQ-2+3)" anchor="sec_sec_conf">
+<section title="Confidentiality of Streamed Content ([RFC6972] PPSP.SEC.REQ-1)" anchor="sec_sec_conf">
 <t>
 No extra mechanism is needed to support confidentiality in PPSPP. A
 content publisher wishing confidentiality should just distribute content 
@@ -3751,27 +3821,38 @@ encryption of content and traffic can be provided by the proposed Closed Swarms
 access control mechanism, or by DTLS <xref target="RFC6347" /> or IPsec 
 <xref target="RFC4301"/>. 
 </t>
+<t>
+When transmitting over DTLS, PPSPP can obtain the PMTU estimate maintained
+by the IP layer to determine how much payload can be put in a single datagram
+without fragmentation (<xref target="RFC6347" />, Sec. 4.1.1.1).  If PMTU 
+changes and the chunk size becomes too large to fit into a single datagram, 
+PPSPP can choose to allow fragmentation by clearing the DF-bit. Alternatively, 
+the content publisher can decide to use smaller chunks and transmit multiple 
+in the same datagram when the MTU allows.
+</t>
 </section>
 
 <!-- %% -->
 <section title="Strength of the Hash Function for Merkle Hash Trees" anchor="sec_sec_hash">
 <t>
-Implementations MUST support SHA1 as the hash function for content integrity
-protection via Merkle Hash trees. SHA1 is preferred over stronger hash functions
-for two reasons. First, it reduces on-the-wire overhead. Second, few 
-implementations need the extra strength of other functions because the function
-is used in a hash tree. In particular, if attackers manage to find a collision 
+Implementations MUST support SHA-1 as the hash function for content integrity
+protection via Merkle Hash trees. SHA-1 may be preferred over stronger hash functions
+by content providers because it reduces on-the-wire overhead. As such it presents
+a trade-off between performance and security. 
+</t>
+<t>
+In general, note that the hash function is used in a hash tree, which makes it more complex to create
+collisions. In particular, if attackers manage to find a collision 
 for a hash it can replace just one chunk, so the impact is limited. If fixed 
-sized chunks are used, the collision has to be of the same size as the 
+sized chunks are used, the collision even has to be of the same size as the 
 original chunk. For hashes higher up in the hash tree, a collision must be a 
 concatenation of two hashes. In sum, finding collisions that fit with the hash 
-tree are generally harder to find than regular SHA1 collisions, which are, at 
-the time of writing, still hard to find.    
+tree are generally harder to find than regular collisions.    
 </t>
 </section>
 
 <!-- %% -->
-<section title="Limit Potential Damage and Resource Exhaustion by Bad or Broken Peers (PPSP.SEC.REQ-4+6)" anchor="sec_sec_limit">
+<section title="Limit Potential Damage and Resource Exhaustion by Bad or Broken Peers ([RFC6972] PPSP.SEC.REQ-2)" anchor="sec_sec_limit">
 <t>
 In this section an analysis is given of the potential damage
 a malicious peer can do with each message in the protocol, and how it
@@ -3971,7 +4052,7 @@ does not respond to its REQUESTs.
 </section>
 </section>
 
-<section title="Exclude Bad or Broken Peers (PPSP.SEC.REQ-5)" anchor="sec_sec_exclude">
+<section title="Exclude Bad or Broken Peers ([RFC6972] PPSP.SEC.REQ-2)" anchor="sec_sec_exclude">
 <t>
 A receiving peer can detect malicious or faulty senders as just described, 
 which it can then subsequently ignore. However, 
@@ -4017,6 +4098,7 @@ blacklist to peers in a scalable manner.
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4034.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4291.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5280.xml"?>
+   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5702.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5905.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6605.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6817.xml"?>
@@ -4047,6 +4129,7 @@ blacklist to peers in a scalable manner.
        <author>
          <organization>IANA</organization>
        </author>
+       <date year="2014" month="Mar"/>
      </front>
    </reference>
    
@@ -4355,7 +4438,7 @@ blacklist to peers in a scalable manner.
 
       <date year="2009" month="Jul"/>
       </front>
-      <seriesInfo name="International Journal of Computer Networks & Communications (IJCNC)" value="Vol.1, No.2"/>
+      <seriesInfo name="International Journal of Computer Networks &amp; Communications (IJCNC)" value="Vol.1, No.2"/>
    </reference>
 
    <reference anchor="DETMAL">
@@ -4982,7 +5065,7 @@ discussed or where the tracker less operation is discussed in contrast.
 It is further unclear what type of information is really required from a 
 tracker.
 A tracker (or a resource directory) would need to provide more then IP 
-address & port, e.g., the used transport protocol for the protocol 
+address &amp; port, e.g., the used transport protocol for the protocol 
 exchange (given that other transports are allowed), used chunk size, 
 chunk addressing scheme, etc
 
@@ -5785,7 +5868,7 @@ detected and just link to the keep-alive mechanism in Section 8.14.
 <list style="symbols">
 <t> 
 The <xref target="sec_mgmt_op_config"/> section was rewritten for this in 
-the Ops & Mgmt part.  
+the Ops &amp; Mgmt part.  
 </t>
 </list>
 
@@ -5828,6 +5911,316 @@ complete content (e.g. in video-on-demand scenarios).
 In response to a remark at WG meeting at IETF 87 we added a paragraph
 on OPTIONAL MTU discovery using PPSPP messages to 
 <xref target="sec_encap_udp_chunksize"/>.    
+</t>
+
+</list>
+</t>
+
+<t hangText="-09        2014-04-4 Nits fixed">
+<list style="empty">
+<t> 
+Nits about e.g. newer references fixed.
+</t>
+</list>
+</t>
+
+
+<t hangText="-10        2014-06-17 DOWNREF restored">
+<list style="empty">
+<t> 
+Reference to LEDBAT was not in Normative references as it should have been.
+</t>
+</list>
+</t>
+
+
+<t hangText="-11        2014-06-18 IANA not OK">
+<list style="empty">
+<t> 
+In the 2nd Last Call IANA posed two questions:
+</t>
+
+<t>"
+QUESTION: Are the authors intended to have one single top-level registry
+to host these six new registries defined in this draft?  Please
+see http://www.iana.org/assignments/ancp as an example, that 
+the ANCP registry hosts multiple sub-registries."
+
+<list style="symbols">
+<t> 
+Yes. We updated the IANA Considerations section with IANA's Pearl Liang
+proposed text to request this.
+</t>
+</list>
+
+</t>
+
+<t>"QUESTION: Section 11.3 specifies that the values are integers in 
+the range 0-255.  However value 0 is not included in the above
+table.  Section 7.2 (Version) does not clearly explain value 0."
+    
+<list style="symbols">
+<t> 
+0 defined as reserved.
+</t>
+</list>
+    
+</t>
+
+<t>Text cleanup
+
+<list style="symbols">
+<t> 
+Terminology: states chunks may be variable size explicitly also here.
+</t>
+<t> 
+Figure 3 label improved.
+</t>
+<t> 
+5.4 Explicitly state that leaves have tree height 0.
+</t>
+<t> 
+5.5 Repaired split paragraph.
+</t>
+<t> 
+5.6 Rephrased start to be consistent with minimally required metadata.
+</t>
+<t>
+5.6.1 Removed remark about peak hashes role in static/live download unification
+as that is no longer the case.    
+</t>
+<t>
+5.6.2 Explicitly stated that peak hashes are transported in INTEGRITY messages.    
+</t>
+<t>
+6.1.2.1 Changed "computing the computed" to "comparing the computed"    
+</t>
+<t>
+6.2 Changed sentence to "*is* related to bitrate"    
+</t>
+<t>
+8.4 Explicitly stated that the *Source* Channel ID is all 0-zeros in closing HANDSHAKE.
+</t>
+<t>
+8.5 Removed spurious line.    
+</t>
+<t>
+8.6 Explicitly stated that the chunk specification in a DATA message denotes
+a single chunk.    
+</t>
+<t>
+8.8 Changed copy+paste from ACK to INTEGRITY message.    
+</t>
+<t>
+8.12 Renamed PEX_RES to PEX_RESv4 where needed.    
+</t>
+<t>
+8.17 Explicitly stated that the *Source* Channel ID is all 0-zeros in closing HANDSHAKE.
+</t>
+<t>
+12.1.5 Changed to read that a swarm's operation can easily verified when swarm metadata
+and tracker info is available.    
+</t>
+<t>
+13.2.1 "cert" -> "certificate"    
+</t>
+<t>
+Added refs to RFC6972 where required.    
+</t>
+
+<!--  End of text cleanup -->
+</list>
+</t>
+
+<t>
+=========================================================================    
+IESG telechat DISCUSSES
+=========================================================================
+</t>
+
+<t>
+Alissa Cooper:     
+"I'm a little surprised about the choice of LEDBAT for congestion control
+of live streams. It seems like LEDBAT is not what the receiver would
+want
+the sender to use for live-streamed content, because if a bottleneck is
+encountered on the path, the live stream will yield early, and the
+recipient's perception of quality will degrade. If the bottleneck is
+near
+the recipient, then every sender sending chunks will yield early, and
+there may be no senders available to stream at an acceptable level of
+quality. I'm assuming the WG discussed this -- it would be helpful to
+understand why a more aggressive congestion control was not selected for
+live streaming."
+
+<list style="symbols">
+<t> 
+Updated 8.16 to discuss why LEDBAT is good in a peer-to-peer context
+(can be friendly to network as a whole and has configurable aggressiveness)
+</t>
+</list>
+    
+</t>
+
+<t>
+-------------------------------------------------------------------------
+</t>
+
+<t>
+Stephen Farrell:     
+"(1) 3.10: What is a "benign" environment? I actually do
+understand what is meant, but how could a program evaluate
+that in order to decicde whether or not to send a PES_RESv4?
+You then refer to a "potentially hostile environment" which
+could presumably be anywhere, so are you really saying that
+PES_REScert is the "right thing" to do, but you know it won't
+be done so these are weasel words around that awkward fact?
+(Apologies if I'm wrong on that, but that's the impression I
+got when reading this, but maybe that's just my paranoia:-)"
+
+<list style="symbols">
+<t> 
+Rephrased to show PEX_REScert is the only option on the Internet.
+</t>
+</list>
+</t>
+
+<t>
+"(2) 6.1.2.2: What exactly are the "munro" bytes that are the
+first input to the signature? Where are those defined? (Sorry
+if I missed/skipped over that;-)"
+
+<list style="symbols">
+<t>
+Added to Terminology and added an explicit reference in this section. 
+</t>
+</list>
+</t>
+
+<t>
+"(3) 7.6 and 13.5: SHA1 as the MTI is wrong. Why is that ok,
+given the collision resistance is less that designed for? 7.7
+also calls for SHA256 being implemented in any case. The
+run-time argument in 13.5 does not convince me.  Attacks only
+ever get worse, so the collision resistance property which
+this protocol needs ought lead to selection of an
+as-far-as-known good hash function. Today that means SHA256
+and not SHA1."  
+
+<list style="symbols">
+<t>
+SHA-256 is now the default. SHA-1 is still MTI to give content
+providers a trade-off between performance and security, as the
+on-the-wire overhead is 37.5% smaller.    
+</t>
+</list>
+
+</t>
+<t>
+"(4) 7.7: Why RSASHA1 and not RSA with SHA256?"
+
+<list style="symbols">
+<t> 
+RSA256 is now also MTI, but RSASHA1 is also required, as argued in the
+previous point. 
+</t>
+</list>
+
+</t>
+<t>
+"(5) 7.10: The message number is wrong in the figure."
+
+<list style="symbols">
+<t>
+Fixed.     
+</t>
+</list>
+
+</t>
+<t>
+"(6) 8.4: I don't see the swarm's metadata record in the ascii
+art diagram and you just say "look at section 7" so two
+questions: a) where is the "chunk size used" option in section
+7? and b) do all the swarm metadata options have to be sent
+each time with no limit on ordering except as given in section
+7 (which had one such order sensitive limit I think)?"
+
+<list style="symbols">
+<t>
+(a) We once envisioned that a peer could start with just a swarm ID+chunk size 
+as metadata and obtain all protocol options (chunk addressing, integrity 
+protection, etc.) from a peer. As this turned out to be too complex to secure 
+(peers may lie about the options), we decided to make the options all part of
+the swarm metadata after the AD review. This renders the protocol options in 
+the HANDSHAKE to an end-to-end test really. Chunk size was never part of that 
+negotiation because writing code that would handle bad input on that parameter 
+was definitely too complicated. Chunk size has now been added as a protocol
+option.
+</t>
+<t>
+(b) The HANDSHAKE message and hence protocol options are sent only in the
+first datagram. After that this information is part of the context of the
+channel that has been established. We added a limit on ordering (sort on 
+code value, ascending) as a simplification.    
+</t>
+</list>
+</t>
+
+
+
+<t>
+"(7) 8.13: Don't you need to register the ppsp URI scheme? In
+case its useful, which I doubt, if you have code: RFC6920 URIs
+could be used for this if you wanted and would save you adding
+ppsp to the IANA URI scheme registry (and having to deal with
+the URI police:-)" 
+
+<list style="symbols">
+<t>
+Not sure. The problem is we need to denote a peer in a swarm here.
+This means we need to encode the swarm ID and the peer address.
+IMHO, this means we cannot use the ni: RFC6920 scheme
+here, because only the hash determines identity. If we would encode
+the swarm ID there (SHA-256 hash of the swarm ID), we need a place
+for the peer address and the authority part does not make the URL unique.
+The ni: URL will still only identify the swarm. 
+Encoding the peer address in OtherNames instead of uniformResourceIdentifier
+is troublesome too. We could find no single object type to denote a 
+transport address (IP+port) that supports both IPv4 and IPv6 (udpDomain is IPv4
+only). Using SAN ipAddress for the address and a separate OtherName
+for the port number (e.g. udpEndpointLocalPort from [RFC4113]) is not ideal, 
+as the port number by itself is not a name for the subject. Hence, we replaced 
+the ppsp: scheme with the file: scheme, which has an authority 
+part where we can naturally encode the peer address in.  
+</t>
+</list>
+
+</t>
+<t>
+"(8) 13.4: Wouldn't DTLS change the chunk size considerations
+and also influence how messages map to datagrams? Isn't more
+specification needed to say how to really use DTLS here? Just
+saying "use DTLS or IPsec or higher layer crypto" doesn't
+really seem sufficient. And doing the DTLS bits right
+shouldn't be very hard either."    
+
+<list style="symbols">
+<t>
+According to RFC6347, for "DTLS over UDP, the upper layer protocol SHOULD be 
+allowed to obtain the PMTU estimate maintained in the IP layer" (Sec. 4.1.1.1).  
+So we know beforehand how much payload we can send in a datagram
+without fragmentation. If PMTU changes and the chunk size becomes too large, 
+we can choose to allow fragmentation ("the upper layer protocol SHOULD be 
+allowed to set the state of the DF bit (in IPv4) or prohibit local fragmentation 
+(in IPv6)."). Alternatively, the content publisher can decide to use smaller 
+chunks and transmit multiple in the same datagram when the MTU allows.
+We added an explanatory paragraph to <xref target="sec_sec_conf"/>.
+</t>
+</list>
+</t>
+
+<t>
+Other DISCUSSes: TODO.    
 </t>
 
 </list>
