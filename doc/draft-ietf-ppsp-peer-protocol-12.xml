@@ -35,7 +35,7 @@
 <?rfc subcompact="no" ?>
 <!-- keep one blank line between list items -->
 <!-- end of list of popular I-D processing instructions -->
-<rfc category="std" docName="draft-ietf-ppsp-peer-protocol-11" ipr="trust200902">
+<rfc category="std" docName="draft-ietf-ppsp-peer-protocol-12" ipr="trust200902">
   <!-- category values: std, bcp, info, exp, and historic
      ipr values: full3667, noModification3667, noDerivatives3667
      you can add the attributes updates="NNNN" and obsoletes="NNNN" 
@@ -132,7 +132,7 @@
 </author>
 
 
-<date month="October" year="2014" />
+<date month="November" year="2014" />
 
     <!-- If the month and year are both specified and are the current ones, xml2rfc will fill 
          in the current day for you. If only the current year is specified, xml2rfc will fill 
@@ -236,6 +236,22 @@ discovery schemes, such as centralized trackers or fast Distributed Hash Tables
 small amount of state per peer. A reference implementation of PPSPP over UDP is 
 available <xref target="SWIFTIMPL"/>.
 </t>
+<t>
+The protocol defined in this document assumes that a peer has
+already discovered a list of (initial) peers using, 
+for example, a centralized tracker <xref target="I-D.ietf-ppsp-base-tracker-protocol"/>.  
+Once a peer has this list of peers, PPSPP allows the peer to connect 
+to other peers, request chunks of content, and discover other peers 
+disseminating the same content.
+</t>
+<t>
+The design of PPSPP is based on our research into making BitTorrent 
+<xref target="BITTORRENT"/> suitable for streaming content <xref target="P2PWIKI"/>.
+Most PPSPP messages have corresponding BitTorrent messages and vice versa. 
+However, PPSPP is specifically targeted towards streaming audio/video content 
+and optimizes time-till-playback. It was also designed to be more flexible and 
+extensible.
+</t>
 </section>
 
 
@@ -264,12 +280,12 @@ protocol (UDP, etc.). The datagram is PPSPP's Protocol Data Unit (PDU).
 </t>
 
 <t hangText="content"><vspace blankLines="0"/>
-Either a live transmission or a pre-recorded multimedia asset.
+Either a live transmission or a pre-recorded multimedia file.
 </t>
 
 <t hangText="chunk"><vspace blankLines="0"/>
 The basic unit in which the content is divided. E.g. a block of N 
-kilobyte. A chunk may be of variable size.
+kilobyte. A chunk may be of variable size. 
 </t>
 
 <t hangText="chunk ID"><vspace blankLines="0"/>
@@ -299,8 +315,9 @@ or more consecutive chunks) in the bin numbers chunk addressing scheme
 
 <t hangText="content integrity protection scheme"><vspace blankLines="0"/>
 Scheme for protecting the integrity of the content while it is being distributed 
-via the peer-to-peer network. I.e. methods for receiving peers to detect 
-whether a requested chunk has been maliciously modified by the sending peer.
+via the peer-to-peer network. That is, methods for receiving peers to detect 
+whether a requested chunk has been modified, either maliciously by the sending 
+peer or accidentally in transit.
 </t>
 
 <t hangText="hash"><vspace blankLines="0"/>
@@ -334,10 +351,10 @@ A group of peers participating in the distribution of the same content.
 </t>
 
 <t hangText="swarm ID"><vspace blankLines="0"/>
-Unique identifier for a swarm of peers, in PPSPP a sequence of bytes. When 
-Merkle hash trees are used for content integrity protection, the identifier 
-is the so-called root hash of the content (video-on-demand). For live 
-streaming, the swarm ID is a public key.
+Unique identifier for a swarm of peers, in PPSPP a sequence of bytes. 
+For video-on-demand with content integrity protection enabled,
+the identifier is the so-called root hash of a Merkle hash tree over the content. 
+For live streaming, the swarm ID is a public key.
 </t>
 
 <t hangText="tracker"><vspace blankLines="0"/>
@@ -352,13 +369,13 @@ willing to accept requests for content from B.
 </t>
 
 <t hangText="seeding"><vspace blankLines="0"/>
-Peer A is said to be seeding when A has downloaded a static content asset 
+Peer A is said to be seeding when A has downloaded a static content file 
 completely and is now offering it for others to download.
 </t>
 
 <t hangText="leeching"><vspace blankLines="0"/>
 Peer A is said to be leeching when A has not completely downloaded 
-a static content asset yet or is not offering to upload it to others.  
+a static content file yet or is not offering to upload it to others.  
 </t>
 
 <t hangText="channel"><vspace blankLines="0"/>
@@ -371,6 +388,12 @@ Unique, randomly chosen identifier for a channel, local to each peer. So the
 two peers logically connected by a channel each have a different channel ID 
 for the channel.    
 </t>
+
+<t hangText="heavy payload"><vspace blankLines="0"/>
+A datagram has a heavy payload when it contains DATA messages, SIGNED_INTEGRITY 
+messages, or a large number of smaller messages.
+</t>
+
 
 </list>
 </t>
@@ -397,7 +420,7 @@ on the transport protocol used (see <xref target="sec_encap_udp"/>).
 
 <t>
 The overall operation of PPSPP is illustrated in the following examples. The 
-examples assume that UDP is used for transport, the Merkle Hash Tree scheme 
+examples assume that the content distributed is static, UDP is used for transport, the Merkle Hash Tree scheme 
 is used for content integrity protection, and that a specific policy is used 
 for selecting which chunks to download.
 </t>
@@ -408,28 +431,30 @@ for selecting which chunks to download.
 Consider a user who wants to watch a video. To play the video, the user clicks 
 on the play button of a HTML5 &lt;video&gt; element shown in his PPSPP-enabled
 browser. Imagine this element has a PPSPP URL (to be defined elsewhere) identifying
-the video as it source. The browser passes this URL to its PPSP protocol handler. 
+the video as its source. The browser passes this URL to its PPSP protocol handler. 
 Let's call this protocol handler peer A. Peer A parses the URL to retrieve the 
-transport address of a PPSP tracker and swarm ID of the content. The tracker 
+transport address of a PPSP tracker and swarm metadata of the content. The tracker 
 address may be optional in the presence of a decentralized tracking 
-mechanism. 
+mechanism. The mechanisms for tracking peers are outside of the scope of 
+this document.
 </t>
 
 <t>
 Peer A now registers with the tracker following the PPSP tracker
 protocol <xref target="I-D.ietf-ppsp-base-tracker-protocol"/>
-and receives the IP address and 
-port of peers already in the swarm, say B, C, and D. Peer A now sends a 
-datagram containing a HANDSHAKE message to B, C, and D. This message conveys 
-protocol options, in particular, peer A includes the ID of the swarm as the 
-destination peers can listen for multiple swarms on the same transport address.
+and receives the IP address and port of peers already in the swarm, say B, C, and D. 
+At this point the PPSPP peer protocol starts operating. Peer A now sends a 
+datagram containing a PPSPP HANDSHAKE message to B, C, and D. This message conveys 
+protocol options. In particular, peer A includes the ID of the swarm (part
+of the swarm metadata) as a protocol option, because the destination peers can 
+listen for multiple swarms on the same transport address.
 </t>
 
 <t>
-Peer B and C respond with datagrams containing a HANDSHAKE message and one or 
+Peer B and C respond with datagrams containing a PPSPP HANDSHAKE message and one or 
 more HAVE messages. A HAVE message conveys (part of) the chunk availability of 
 a peer and thus contains a chunk specification that denotes what chunks of the 
-content peer B, resp. C have. Peer D sends a datagram with a HANDSHAKE and 
+content peer B, respectively C have. Peer D sends a datagram with a HANDSHAKE and 
 HAVE messages, but also with a CHOKE message. The latter indicates that D
 is not willing to upload chunks to A at present.
 </t>
@@ -446,10 +471,10 @@ HAVE, DATA and, in this example, INTEGRITY messages. In the Merkle hash tree
 content protection scheme (see <xref target="sec_intprot_merkle"/>), the 
 INTEGRITY messages contain all cryptographic hashes that peer A needs to verify 
 the integrity of the content chunk sent in the DATA message. Using these hashes 
-peer A verifies that the chunks received  from B and C are correct. It also 
-updates the chunk  availability of B and C  using the information in the 
-received HAVE messages. In addition, it passes the chunks of video to the
-user's browser for rendering.
+peer A verifies that the chunks received from B and C are correct against
+the trusted swarm ID. Peer A also updates the chunk availability of B and C using 
+the information in the received HAVE messages. In addition, it passes the 
+chunks of video to the user's browser for rendering.
 </t>
 
 <t>
@@ -466,7 +491,7 @@ Peer D also sends HAVE messages to A when it downloads chunks from other peers.
 When D is willing to accept REQUESTs from A, D sends a datagram with
 an UNCHOKE message to inform A. If B or C decide to choke A they send a CHOKE
 message and A should then re-request from other peers. B and C may continue to 
-send HAVE, REQUEST, or periodic KEEPALIVE messages such that A keeps sending 
+send HAVE, REQUEST, or periodic keep-alive messages such that A keeps sending 
 them HAVE messages.
 </t>
 
@@ -487,7 +512,7 @@ and deregisters from the tracker following the (PPSP)
 tracker protocol. Peers receiving the datagram should remove A
 from their current peer list. If A crashes ungracefully, peers should
 remove A from their peer list when they detect it no longer sends messages
-(see <xref target="sec_encap_udp_detect_dead"/>).
+(see <xref target="sec_msgs_keepalive"/>).
 </t>
 </section>
 
@@ -497,47 +522,199 @@ remove A from their peer list when they detect it no longer sends messages
 <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
 <section title="Messages" anchor="sec_msgs">
 <t>
-In general, no error codes or responses are used in the protocol; absence 
+No error codes or responses are used in the protocol; absence 
 of any response indicates an error. Invalid messages are discarded, and
 further communication with the peer SHOULD be stopped. The rationale is that
-it is sufficient to classify peers as either good (i.e., responding with chunks)
-or bad and only use the good ones. This behavior allows a peer to deal with 
-slow, crashed and (silent) malicious peers.
+it is sufficient to classify peers as either good or bad and only use the good 
+ones. A good peer is a peer that responds with chunks; a peer that does not
+respond, or does not respond in time is classified as bad. The idea
+is that in PPSPP the content is available from multiple sources (unlike HTTP),
+so a peer should not invest too much effort in trying to obtain it from
+a particular source. This classification in good or bad allows a peer to deal 
+with slow, crashed and (silent) malicious peers.
 </t>
 <t>
-Multiple messages are multiplexed into a single datagram for transmission.
+Multiple messages MUST be multiplexed into a single datagram for transmission.
 Messages in a single datagram MUST be processed in the strict order in which 
-they appear in the datagram.
+they appear in the datagram. If an invalid message is found in a datagram,
+the remaining messages MUST be discarded.
 </t>
 <t>
 For the sake of simplicity, one swarm of peers deals with one content 
-asset (e.g. file) only. Retrieval of a collections of files can be done 
+file or stream only. There is a single division of the content into chunks
+that all peers in the swarm adhere to, determined by the content publisher. 
+Distribution of a collection of files can be done 
 either by using multiple swarms or by using an external storage mapping from 
 the linear byte space of a single swarm to different files, transparent to the 
-protocol.
+protocol. In other words, the audio/video container format used is outside the
+scope of this document.
 </t>
 
 
 <!-- %% -->
 <section title="HANDSHAKE" anchor="sec_msgs_HANDSHAKE">
+    
 <t>
-The initiating peer and the addressed peer MUST send a HANDSHAKE message as the
-first message in the first datagrams they exchange. The payload of the HANDSHAKE
-message is a channel ID (see <xref target="sec_msgs_channels"/>) and a sequence 
-of protocol options. Example options are the content 
-integrity protection scheme used and an option to specify the swarm identifier. 
-The complete set of protocol options are specified in <xref target="sec_protopt"/>.
+For a peer P to establish communication with a peer Q in swarm S the peers must 
+first exchange HANDSHAKE messages by means of a handshake procedure.
+The initiating peer P needs to know the metadata of swarm S, which consists of:
+
+<list style="format (%c)">
+<t>the swarm ID of the content (see <xref target="sec_intprot_merkle"/>
+and <xref target="sec_live"/>),</t>
+<t>the chunk size used,</t>
+<t>the chunk addressing method used,</t>
+<t>the content integrity protection method used, and</t>
+<t>the Merkle hash tree function used (if applicable).</t>
+<t>If automatic content size detection (see <xref target="sec_intprot_autosize"/>) 
+   is not used, the content length is also part of the metadata (for 
+   static content.)
+</t>
+</list>
 </t>
 
 <t>
-After the handshakes are exchanged, the initiator knows that the peer really
-responds. Hence, the second datagram the initiator sends MAY already contain
-some heavy payload, e.g. DATA messages. To minimize the number of initialization 
-round-trips, the first two datagrams exchanged MAY also contain some minor 
-payload, e.g. HAVE messages to indicate the current progress of a peer or a 
-REQUEST (see <xref target="sec_msgs_REQUEST"/>), but MUST NOT include any 
-DATA message.
+This document assumes the swarm metadata is obtained from a trusted source.
+In addition, peer P needs to know a transport address for peer Q, obtained
+from a peer discovery/tracking protocol.    
+</t>    
+<t>
+The payload of the HANDSHAKE message contains a sequence of protocol options. 
+The protocol options encode the swarm metadata just described to enable
+an end-to-end check whether the peers are in the right swarm, and a number 
+of per-peer configuration parameters. The complete set of protocol options are 
+specified in <xref target="sec_protopt"/>. The HANDSHAKE message also contains
+a channel ID, for multiplexing communication and security, see 
+<xref target="sec_msgs_channels"/> and <xref target="sec_sec_handshake"/>. 
+A HANDSHAKE message MUST always be the first message in a datagram.   
 </t>
+    
+
+<!-- %% -->
+<section title="Handshake Procedure" anchor="sec_msgs_HANDSHAKE_proc">
+
+<t>
+The handshake procedure for a peer P to start communication with
+another peer Q in swarm S is now as follows.
+</t>
+
+<t>
+<list style="numbers">
+
+<t>
+The first datagram the initiating peer P sends to peer Q MUST start with a 
+HANDSHAKE message. This HANDSHAKE message MUST contain:
+<list style="symbols">
+<t>
+A channel ID, chanP, randomly chosen as specified in <xref target="sec_sec_handshake"/>.
+</t>
+<t>
+The metadata of swarm S, encoded as protocol options, as specified 
+in <xref target="sec_protopt"/>. In particular, the initiating peer P MUST
+include the swarm ID.     
+</t>
+<t>
+The capabilities of peer P, in particular, its supported protocol versions, 
+"Live Discard Window" (in case of a live swarm) and "Supported Messages", 
+encoded as protocol options.
+</t>    
+</list>
+This first datagram MUST be prefixed with the (destination) channel ID 0, 
+see <xref target="sec_msgs_channels"/>. Hence, the datagram contains
+two channel IDs: the destination channel ID prefixed to the datagram,
+and the channel ID chanP included in the HANDSHAKE message inside the datagram. 
+This datagram MAY also contain some minor additional payload, e.g. HAVE 
+messages to indicate P's current progress, but MUST NOT include any heavy 
+payload (defined in <xref target="sec_intro_term"/>), such as a DATA message 
+Allowing minor payload minimizes the number of initialization round-trips, 
+thus improving time-till-playback. Forbidding heavy payload prevents
+an amplification attack (see <xref target="sec_sec_handshake"/>.)
+</t>
+    
+<t>
+The receiving peer Q checks the HANDSHAKE message from peer P. If any check
+by Q fails, Q MUST NOT send a HANDSHAKE (or any other) message back, as the 
+message from P may have been spoofed (see <xref target="sec_sec_handshake"/>). 
+Only if P and Q are in the same swarm, and Q is interested in communicating with P, 
+Q MUST a datagram to P that starts with a HANDSHAKE message. This reply 
+HANDSHAKE MUST contain:
+
+<list style="symbols">
+<t>
+A channel ID, chanQ, randomly chosen as specified in <xref target="sec_sec_handshake"/>.
+</t>
+<t>
+The metadata of swarm S, encoded as protocol options, as specified 
+in <xref target="sec_protopt"/>. In particular, the responding peer Q MAY
+include the swarm ID.     
+</t>
+<t>
+The capabilities of peer Q, in particular, its supported protocol versions,
+its "Live Discard Window" (in case of a live swarm) and "Supported Messages", 
+encoded as protocol options.
+</t>    
+</list>
+This reply datagram MUST be prefixed with the channel ID chanP sent by P in the
+first HANDSHAKE message (see <xref target="sec_msgs_channels"/>). This reply 
+datagram MAY also contain some minor additional payload, e.g. HAVE messages to 
+indicate Q's current progress, or REQUEST messages (see <xref target="sec_msgs_REQUEST"/>), 
+but MUST NOT include any heavy payload.
+</t>
+
+<t>
+The initiating peer P checks the reply datagram from Q. If the reply datagram
+is not prefixed with (destination) channel ID chanP, peer P MUST discard the datagram.
+P SHOULD continue to process datagrams from Q that do meet this requirement.
+This check prevents interference by spoofing, see <xref target="sec_sec_handshake"/>. 
+If P's channel ID is echoed correctly, the initiator P knows that the addressed 
+peer Q really responds.
+</t>
+
+<t>Next, peer P checks the HANDSHAKE message in the datagram from Q. If any 
+check by P fails,
+or P is no longer interested in communicating with Q, P MAY send a HANDSHAKE
+message to inform Q it will cease communication. This closing HANDSHAKE message  
+MUST contain an all 0-zeros channel ID and a list of protocol options. The
+list MUST be either empty or contain the maximum version number peer P 
+supports, following the Min/max versioning scheme defined in 
+<xref target="RFC6709"/>, Section 4.1. The datagram containing this closing
+HANDSHAKE message MUST be prefixed with (destination) channel ID chanQ. 
+Peer P MAY also simply cease communication. 
+</t>
+
+<t>
+If addressed peer Q does not respond to initiating peer P's first datagram, 
+peer P MAY resend that datagram, until peer Q is considered dead, according to 
+the rules specified in <xref target="sec_msgs_keepalive"/>.
+</t>    
+
+<t>
+If the reply datagram by Q does pass the checks by peer P and P wants to continue 
+interacting with peer Q, P can now send REQUEST, PEX_REQ and other messages 
+to Q. Datagrams carrying these messages MUST be prefixed with the channel ID 
+chanQ sent by Q. More specifically, because P knows that Q really responds, 
+P MAY start sending Q messages with heavy payload. That means that P MAY start 
+responding to any REQUEST messages that Q may have sent in this first reply datagram
+with DATA messages. Hence, transfer of chunks can start soon in PPSPP.
+</t>
+<t>
+If peer Q receives any datagram (apparently) from P that does not contain 
+channel ID chanQ, Q MUST discard the datagram, but SHOULD continue to process 
+datagrams from P that do meet this requirement. Once Q receives a datagram
+from P that does contain the channel ID chanQ, Q knows that P really received
+its reply datagram, and the three-way handshake and channel establishment is 
+complete. Q MAY now also start sending messages with heavy payload to P. 
+</t>
+<t>
+If peer P decides it no longer wants to communicate with Q, or vice versa,
+the peer SHOULD send a closing HANDSHAKE message to the other, as described
+above.
+</t>
+
+</list>
+</t>
+</section>    
+    
 </section>
 
 
@@ -553,8 +730,8 @@ that set.
 </t>
 <t>
 In particular, whenever a receiving peer P has successfully checked the integrity 
-of a chunk, or interval of chunks, it SHOULD send a HAVE message to all peers 
-Q1..Qn it wants to interact with in the near future. A policy in peer P 
+of a chunk, or interval of chunks, it MUST send a HAVE message to all peers 
+Q1..Qn it wants to allow to download those chunk(s). A policy in peer P 
 determines when the HAVE is sent. P may sent it directly, or peer P may wait 
 until either it has other data to sent to Qi, or until it has received
 and checked multiple chunks. The policy will depend on how urgent it is to
@@ -693,7 +870,9 @@ is exhausted. Peer A MAY send a subsequent UNCHOKE message to signal that it
 will respond to new REQUESTs from B again (A SHOULD discard old requests).
 When peer B receives a CHOKE message from A it MUST NOT send new REQUEST 
 messages and it cannot expect answers to any outstanding ones, as the transfer 
-of chunks is choked. The CHOKE and UNCHOKE messages are informational as 
+of chunks is choked. When peer B is choked but receives a HAVE message from A
+it is not automatically unchoked and MUST NOT send any new REQUEST messages.
+The CHOKE and UNCHOKE messages are informational as 
 responding to REQUESTs is OPTIONAL, see <xref target="sec_msgs_REQUEST"/>.
 </t>
 </section>
@@ -845,11 +1024,28 @@ for handshaking.</postamble>
 <!-- %% -->
 <section title="Keep Alive Signalling" anchor="sec_msgs_keepalive">
 <t>
-A peer SHOULD send a "keep alive" message periodically to each peer it wants to 
-interact with in the future, but has no other messages to send them at present. 
-Periodically sending "keep alive" messages prevents other peers from closing the 
-connection after a predefined time interval of 3 minutes, as described in 
-<xref target="sec_encap_udp_detect_dead"/>.
+A peer SHOULD send a "keep alive" message periodically to each peer it
+is interested in, but has no other messages to send to them at present.
+The goal of the keep alives is to keep a signaling channel open to
+peers that are of interest. Which peers those are is 
+determined by a policy that decides which peers are of interest now and in the 
+near future. This document does not prescribe a policy, but examples of 
+interesting peers are: (a) peers that have chunks on 
+offer that this client needs, or (b) peers that currently do not have 
+interesting chunks on offer (because they are still downloading 
+themselves, or in live streaming), but gave good performance in the 
+past. When these peers have new chunks to offer, the peer that kept
+a signaling channel open can use them again. 
+
+Periodically sending "keep alive" messages prevents other peers declaring the
+peer dead.  A guideline for declaring a peer dead when using UDP consists of 
+a 3 minute delay since that last packet has been received from that peer, and 
+at least 3 datagrams were sent to that peer during the same period.
+When a peer is declared dead, the channel to it is closed, no more 
+messages will be sent to that peer and the local administration about the 
+peer is discarded. Busy servers can force idle clients to disconnect by not
+sending keep alives.
+
 PPSPP does not define an explicit message type for "keep alive" messages. In the 
 PPSP-over-UDP encapsulation they are implemented as simple datagrams consisting 
 of a 4-byte channel ID only, see <xref target="sec_encap_udp_channels"/>
@@ -988,7 +1184,7 @@ C0  C1  C2  C3   C4  C5  C6   C7
 
 <t>
 So bin 7 represents the complete interval, bin 3 represents the interval of
-chunk 0..3, bin 1 represents the interval of chunks 0 and 1, and 
+chunk C0..C3, bin 1 represents the interval of chunks C0 and C1, and 
 bin 2 represents chunk C1. The special numbers 0xFFFFFFFF (32-bit) or 
 0xFFFFFFFFFFFFFFFF (64-bit) stands for an empty interval, and 0x7FFF...FFF 
 stands for "everything". 
@@ -1016,7 +1212,7 @@ to a single bin number (32-bit or 64-bit), as follows.
 <t>
 When a receiving peer has successfully checked the integrity of a chunk or
 interval of chunks it MUST send a HAVE message to all peers it wants to 
-interact with. The ability to withhold HAVE messages allows them to be used as a method of 
+allow download of those chunk(s) from. The ability to withhold HAVE messages allows them to be used as a method of 
 choking. The HAVE message MUST contain the chunk specification of the biggest
 complete interval of all chunks the receiver has received and checked so far
 that fully includes the interval of chunks just received. So the chunk 
@@ -1099,7 +1295,7 @@ and a public key are used, see below.
 </t>
 
 <t>
-The Merkle hash tree of a content asset that is divided into N chunks
+The Merkle hash tree of a content file that is divided into N chunks
 is constructed as follows. Note the construction does not assume chunks
 of content to be fixed size. Given a cryptographic hash function, more 
 specifically  a modification detection code (MDC) 
@@ -1107,7 +1303,7 @@ specifically  a modification detection code (MDC)
 chunks of the content are calculated. Next, a binary tree of sufficient height 
 is created. Sufficient height means that the lowest level in the tree has 
 enough nodes to hold all chunk hashes in the set, as with bin numbering. 
-The figure below shows the tree for a content asset consisting of 7 chunks. 
+The figure below shows the tree for a content file consisting of 7 chunks. 
 As before with the content addressing scheme, the leaves of the tree correspond 
 to a chunk and in this case are assigned the hash of that chunk, starting at 
 the left-most leaf. As the base of the tree may be wider than the number of 
@@ -1141,7 +1337,7 @@ C0  C1  C2  C3   C4  C5  C6   E
 =chunk index     ^^           = empty hash
 
 ]]></artwork>
-<postamble>The Merkle hash tree of a content asset with N=7 chunks</postamble>
+<postamble>The Merkle hash tree of a content file with N=7 chunks</postamble>
 </figure>
 
 </section>
@@ -1158,7 +1354,9 @@ chunk it MUST receive the hashes required to check the integrity of that
 chunk. In principle, these are the hash of the chunk's sibling (C5) and 
 that of its "uncles". A chunk's uncles are the sibling Y of its parent X, 
 and the uncle of that Y, recursively until the root is reached. For chunk C4 
-its uncles are nodes 13 and 3, marked with * in the figure. Using this information 
+its uncles are nodes 13 and 3 and its sibling is 10; all marked with a * in 
+the figure. 
+Using this information 
 the peer recalculates the root hash of the tree, and compares it to the 
 root hash it received from the trusted source. If they match the chunk of 
 content has been positively verified to be the requested part of the content. 
@@ -1185,7 +1383,7 @@ As explained above, a datagram consists of a sequence of messages. Ideally,
 every datagram sent must be independent of other datagrams, so each 
 datagram SHOULD be processed separately and a loss of one datagram must not
 disrupt the flow of datagrams between two peers. Thus, as a datagram carries 
-zero or more messages, neither messages nor message interdependencies SHOULD 
+zero or more messages, both messages and message interdependencies SHOULD NOT
 span over multiple datagrams. 
 </t>
 
@@ -1223,7 +1421,7 @@ hash, and uses it for data validation.
 </t>
 
 <t>
-In short, the sender MUST put into the datagram the missing hashes necessary 
+In short, the sender MUST put into the datagram the hashes he believes are necessary 
 for the receiver to verify the chunk. The receiver MUST remember all the
 hashes it needs to verify missing chunks that it still wants to download. 
 Note that the latter implies that a hardware-limited receiver MAY forget 
@@ -1322,11 +1520,11 @@ calculated and verified as part of earlier chunks.
 <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
 <section title="Automatic Detection of Content Size" anchor="sec_intprot_autosize">
 <t>
-In PPSPP, the size of a static content asset, such as a video file,
+In PPSPP, the size of a static content file, such as a video file,
 can be reliably and automatically derived from information received from the 
 network when fixed sized chunks are used. As a result, it is not necessary 
-to include the size of the content asset as the metadata of the content,
-for such assets. Implementations of PPSPP MAY use 
+to include the size of the content file as the metadata of the content,
+for such files. Implementations of PPSPP MAY use 
 this automatic detection feature. Note this feature is the only feature of 
 PPSPP that requires that a fixed-sized chunk is used. This feature builds
 on the Merkle hash tree and the trusted root hash as swarm ID as follows.   
@@ -1516,8 +1714,8 @@ streaming scenarios. The use of Merkle hash trees reduces the number of
 signing and verification operations, hence providing a similar signature 
 amortization to the approach described in <xref target="SIGMCAST"/>.
 If PPSPP operates over the Internet, the "Unified Merkle Tree" method MUST be 
-used. If the protocol operates in a benign environment the method MAY be used.
-So this method is mandatory-to-implement. 
+used. If the protocol operates in a benign environment the "Unified Merkle Tree"
+method MAY be used. So this method is mandatory-to-implement. 
 </t>
 <t>
 In both methods the swarm ID consists of a public key encoded as in a DNSSEC
@@ -1564,7 +1762,7 @@ timestamp, and the digital signature.
 The digital signature algorithm which is used, is determined by the Live Signature 
 Algorithm protocol option, see <xref target="sec_protopt_livesigalg"/>.
 The signature is computed over a concatenation of the on-the-wire
-representation of the chunk specification, a 64-bit NTP timestamp 
+representation of the chunk specification, a 64-bit timestamp in NTP Timestamp format 
 <xref target="RFC5905"/>, and the chunk, in that order. 
 The timestamp is the time signature that was made at the injector in UTC.     
 </t>
@@ -1727,7 +1925,7 @@ Algorithm protocol option, see <xref target="sec_protopt_livesigalg"/>.
 
 The signature is computed over a concatenation of the on-the-wire
 representation of the chunk specification of the munro node 
-(see <xref target="sec_live_merkle_sigmunro"/>), a timestamp in 64-bit NTP format 
+(see <xref target="sec_live_merkle_sigmunro"/>), a timestamp in 64-bit NTP Timestamp format 
 <xref target="RFC5905"/>, and the hash associated with the munro node, 
 in that order. The timestamp is the time signature that was made at the 
 injector in UTC.     
@@ -1945,7 +2143,7 @@ The code for this option is 1. Defined values are listed in
 <section title="Swarm Identifier" anchor="sec_protopt_swarmid">
 <t>
 When a peer initiates the handshake it MUST include a single swarm identifier 
-option. In other cases a peer MAY include a swarm identifier option, as an 
+option. If the peer is not the initiator, it MAY include a swarm identifier option, as an 
 end-to-end check. This option has the following structure: 
 </t>
 <figure><artwork>
@@ -2088,10 +2286,10 @@ Default is "32-bit chunk ranges".
 </t>
 <figure><artwork>
  0                   1     
- 0 1 2 3 4 5 6 7 8 9 0 1 2 
-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|0 0 0 0 0 1 1 0| CAM (8) |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|0 0 0 0 0 1 1 0|    CAM (8)    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 </artwork></figure>
 </section>
 
@@ -2102,7 +2300,8 @@ Default is "32-bit chunk ranges".
 <t>
 A peer in a live swarm MUST include the discard window it uses. The code
 for this option is 7. The unit
-of the discard window depends on the chunk addressing method used. For
+of the discard window depends on the chunk addressing method used, see
+<xref target="tab_id_chunk_addr"/>. For
 bins and chunk ranges it is a number of chunks, for byte ranges it is a number
 of bytes. Its data type is the same as for a bin, or one value in a range 
 specification. In other words, its value is a 32-bit or 64-bit integer in 
@@ -2125,7 +2324,7 @@ structure:
 A peer that does not, under normal circumstances, discard chunks MUST set
 this option to the special value 0xFFFFFFFF (32-bit) or 0xFFFFFFFFFFFFFFFF 
 (64-bit). For example, peers that record a complete broadcast to offer it
-directly as a static asset after the broadcast ends use these values (see  
+directly as a static file after the broadcast ends use these values (see  
 <xref target="sec_live_merkle"/>). <xref target="sec_live_disc"/> explains
 how to determine a value for this option.
 </t>
@@ -2152,6 +2351,8 @@ corresponds to support for message type X, see <xref target="tab_id_msg_type"/>.
 In other words, to construct the compressed bitmap, create a bitmap with 
 a 1 for each message type supported and a 0 for a message type that is not, 
 store it as an array of bytes and truncate it to the last non-zero byte.
+An example of the first 16 bits of the compressed bitmap for a peer supporting
+every message except ACKs and PEXs is: 11011001 11110000.
 </t>
 <figure><artwork>
  0                   1                   2                   3
@@ -2324,31 +2525,10 @@ requirements in <xref target="RFC4960"/> (Sec. 5.1.3).
 <section title="HANDSHAKE" anchor="sec_encap_udp_HANDSHAKE">
 <t>
 A channel is established with a handshake. To start a handshake, the initiating 
-peer needs to know:
-</t>
-<t>
-<list style="numbers">
-<t>the IP address of a peer</t>
-<t>peer's UDP port and</t>
-<t>the swarm's metadata record which consists of:
-<list style="format (%c)">
-<t>the swarm ID of the content (see <xref target="sec_intprot_merkle"/>
-and <xref target="sec_live"/>),</t>
-<t>the chunk size used,</t>
-<t>the chunk addressing method used,</t>
-<t>the content integrity protection method used, and</t>
-<t>the Merkle hash tree function used (if applicable).</t>
-<t>If automatic content size detection (see <xref target="sec_intprot_autosize"/>) 
-   is not used, the content length is also part of the metadata record for 
-   static content.
-</t>
-</list>
-</t>
-</list>
-</t>
+peer needs to know the swarm metadata, defined in <xref target="sec_msgs_HANDSHAKE"/>
+and the IP address and UDP port of a peer. A datagram containing a HANDSHAKE message
+then looks as follows:
 
-<t>
-A datagram containing a HANDSHAKE message:
 <figure><artwork>
  0                   1                   2                   3
  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -2552,8 +2732,8 @@ the end chunk describing the chunk range, and the hash.
 <section title="SIGNED_INTEGRITY" anchor="sec_encap_udp_SIGNED_INTEGRITY">
 <t>
 A SIGNED_INTEGRITY message (type 0x07) consists of a chunk specification,
-a 64-bit NTP timestamp <xref target="RFC5905"/> and a digital signature 
-encoded as a Signature field in a RRSIG record in DNSSEC without the BASE-64 
+a 64-bit timestamp in NTP Timestamp format <xref target="RFC5905"/> and a digital signature 
+encoded as a Signature field would be in a RRSIG record in DNSSEC without the BASE-64 
 encoding <xref target="RFC4034"/>. The signature algorithm is defined by the 
 Live Signature Algorithm protocol option, see 
 <xref target="sec_protopt_livesigalg"/>. The plaintext over which the
@@ -2696,7 +2876,8 @@ A PEX_REQ (0x06) message has no payload. A PEX_RESv4 (0x05) message consists
 of an IPv4 address in big endian format followed by a UDP port number
 in big endian format. A PEX_RESv6 (0x0c) message contains a 128-bit IPv6 
 address instead of an IPv4 one. If a PEX_REQ message does not originate from
-a private or link-local address <xref target="RFC1918"/><xref target="RFC4291"/>,
+a private, unique-local, link-local or multicast address 
+<xref target="RFC1918"/><xref target="RFC4193"/><xref target="RFC4291"/>,
 then the PEX_RES* messages sent in reply MUST NOT contain such addresses. This 
 is to prevent leaking of internal addresses to external peers.
 </t>
@@ -2820,18 +3001,6 @@ A keepalive datagram:
 
 
 <!-- %% -->
-<section title="Detecting a Dead Peer" anchor="sec_encap_udp_detect_dead">
-<t>
-A guideline for declaring a peer dead consists of a 3 minute delay since
-that last packet has been received from that peer, and at least 3 datagrams 
-were sent to that peer during the same period.
-</t>
-
-</section>
-
-
-
-<!-- %% -->
 <section title="Flow and Congestion Control" anchor="sec_encap_udp_control">
 <t>
 Explicit flow control is not required for PPSPP-over-UDP. In the case of
@@ -2902,7 +3071,8 @@ as listed in <xref target="tab_id_proto_opt"/>, rather than the actual binary va
 <t>
 To do the handshake the initiating peer sends a datagram that MUST start 
 with an all 0-zeros channel ID (0x00000000), followed by a HANDSHAKE message, whose 
-payload is a locally unused channel ID (0x00000001) and a list of protocol options.
+payload is a locally unused, random channel ID (in this case 0x00000001) and a list of protocol options.
+Channel IDs MUST be randomly chosen, as described in <xref target="sec_sec_handshake"/>.
 </t>
 
 <t>
@@ -2947,7 +3117,7 @@ The protocol options are:
 <t>
 The receiving peer MAY respond, in which case the returned datagram MUST consist
 of the channel ID from the sender's HANDSHAKE message (0x00000001), a HANDSHAKE message, 
-whose payload is a locally unused channel ID (0x00000008) and a list of protocol options,
+whose payload is a locally unused, random channel ID (0x00000008) and a list of protocol options,
 followed by any other messages it wants to send. 
 </t>
 
@@ -3263,7 +3433,7 @@ behalf of a content provider.
 <!-- %%% -->
 <section title="Installation and Initial Setup" anchor="sec_mgmt_op_install">
 <t>
-A content provider wishing to use PPSPP to distribute content should setup
+A content provider wishing to use PPSPP to distribute content should set up
 at least one PPSPP server. PPSPP servers need to have access to either some 
 static content or to some live audio/video sources. To provide flexibility for 
 implementors, this configuration process is not standardized. The output of 
@@ -3276,7 +3446,7 @@ content length is also part of the metadata record for static content. Note
 the swarm ID already contains the Live Signature Algorithm used, in case of a 
 live stream.
 </t>
-<t>In addition, a content provider should setup a tracking facility for the 
+<t>In addition, a content provider should set up a tracking facility for the 
 content by configuring, for example, a PPSP tracker <xref target="I-D.ietf-ppsp-base-tracker-protocol"/> 
 or a Distributed Hash Table. The output of the latter process is a list of 
 transport addresses for the tracking facility.
@@ -3389,7 +3559,7 @@ discussing the considerations to make when choosing a value.
 <c>Chunk Addressing Method</c>				<c>2 (32-bit chunk ranges)</c>	<c><xref target="sec_protopt_chunkaddr"/></c>
 <c>Live Discard Window</c>				<c>var</c>			<c><xref target="sec_live_disc"/>, <xref target="sec_protopt_livediscwin"/></c>
 <c>NCHUNKS_PER_SIG</c>					<c>var</c>			<c><xref target="sec_live_merkle_sigmunro"/></c>
-<c>Dead peer detection</c>				<c>No reply in 3 minutes + 3 datagrams</c>	<c><xref target="sec_encap_udp_detect_dead"/></c>	
+<c>Dead peer detection</c>				<c>No reply in 3 minutes + 3 datagrams</c>	<c><xref target="sec_msgs_keepalive"/></c>	
 	
 <postamble></postamble>
 </texttable>
@@ -3838,7 +4008,8 @@ in the same datagram when the MTU allows.
 Implementations MUST support SHA-1 as the hash function for content integrity
 protection via Merkle Hash trees. SHA-1 may be preferred over stronger hash functions
 by content providers because it reduces on-the-wire overhead. As such it presents
-a trade-off between performance and security. 
+a trade-off between performance and security. The security considerations
+for SHA-1 are discussed in <xref target="RFC6194"/>.
 </t>
 <t>
 In general, note that the hash function is used in a hash tree, which makes it more complex to create
@@ -4145,20 +4316,22 @@ blacklist to peers in a scalable manner.
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.3729.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4113.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4150.xml"?>
+   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4193.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4301.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4821.xml"?>
-   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6241.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.4960.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5226.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5389.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5424.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5706.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.5971.xml"?>
-   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6709.xml"?>
+   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6194.xml"?>
+   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6241.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6347.xml"?>
+   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6709.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.6972.xml"?>
 
-   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml3/reference.I-D.draft-ietf-ppsp-base-tracker-protocol-03.xml"?>
+   <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml3/reference.I-D.draft-ietf-ppsp-base-tracker-protocol-06.xml"?>
    <?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml3/reference.I-D.draft-ietf-alto-protocol-27.xml"?>
 
    <reference anchor="MERKLE">
@@ -4611,12 +4784,44 @@ blacklist to peers in a scalable manner.
       <organization></organization>
       </author>
 
-      <date year="2012" month="Sept"/>
+      <date year="2012" month="Sep"/>
       </front>
       <seriesInfo name="IEEE International Conference on Peer-to-Peer Computing" 
          value="(P2P'12), Tarragona, Spain"/>
    </reference>
-      
+
+   <reference anchor='P2PWIKI'>
+      <front>
+      <title>Online video using BitTorrent and HTML5 applied to Wikipedia</title>
+
+      <author initials="A." surname="Bakker">
+      <organization></organization>
+      </author>
+      <author initials="R." surname="Petrocco">
+      <organization></organization>
+      </author>
+      <author initials="M." surname="Dale">
+      <organization></organization>
+      </author>
+      <author initials="J." surname="Gerber">
+      <organization></organization>
+      </author>
+      <author initials="V." surname="Grishchenko">
+      <organization></organization>
+      </author>
+      <author initials="D." surname="Rabaioli">
+      <organization></organization>
+      </author>
+      <author initials="J." surname="Pouwelse">
+      <organization></organization>
+      </author>
+
+      <date year="2010" month="Aug"/>
+      </front>
+      <seriesInfo name="IEEE International Conference on Peer-to-Peer Computing" 
+         value="(P2P'10), Delft, The Netherlands"/>
+   </reference>
+   
 </references>
 
 
@@ -5150,7 +5355,7 @@ datagram contain multiple HAVEs?
 <t> 
 Clarified that this is indeed controlled by a policy outside the peer
 protocol that can decide to piggyback onto other traffic or wait till
-multile chunks are verified.
+multiple chunks are verified.
 </t>
 </list>
 </t>
@@ -6039,7 +6244,9 @@ IESG telechat DISCUSSES
 </t>
 
 <t>
-Alissa Cooper:     
+**Alissa Cooper:**     
+</t>
+<t>
 "I'm a little surprised about the choice of LEDBAT for congestion control
 of live streams. It seems like LEDBAT is not what the receiver would
 want
@@ -6063,11 +6270,13 @@ Updated 8.16 to discuss why LEDBAT is good in a peer-to-peer context
 </t>
 
 <t>
--------------------------------------------------------------------------
+--------------------------------------------------------------
 </t>
 
 <t>
-Stephen Farrell:     
+**Stephen Farrell:**     
+</t>
+<t>
 "(1) 3.10: What is a "benign" environment? I actually do
 understand what is meant, but how could a program evaluate
 that in order to decicde whether or not to send a PES_RESv4?
@@ -6220,8 +6429,608 @@ We added an explanatory paragraph to <xref target="sec_sec_conf"/>.
 </t>
 
 <t>
-Other DISCUSSes: TODO.    
+**Other DISCUSSes: TODO.**    
 </t>
+
+</list>
+</t>
+
+
+<t hangText="-12        2014-11-16 Other DISCUSSes and reviews">
+<list style="empty">
+
+<t>
+=========================================================================    
+IESG telechat DISCUSSES (continued)
+=========================================================================
+</t>
+
+<t>
+**Richard Barnes:**     
+</t>
+<t>
+"My DISCUSS here is based mainly on the readability of the document, which
+seems bad enough to be an impediment to interoperability.  
+
+As far as I can tell, this document does not define a protocol, in the
+sense of a set of actions required to achieve a given objective. 
+Instead, it presents a pile of piece parts with a couple of combinations,
+and notes that these combinations could be used to achieve, e.g., live
+streaming.  (In the language of patents, it has not been "reduced to
+practice".)
+
+What are the steps an implementation follows to join a swarm?  To connect
+to a new peer and request chunks?  The pieces seem to be here, but the
+big picture is completely absent."    
+<list style="symbols">
+<t>
+Clarified the DISCUSS via email. In response, we made the distinction between
+tracker protocol and peer protocol more clear in the Introduction and 
+Section 2.
+</t>
+<t>
+We also rewrote the section on the HANDSHAKE message to include an explicit
+handshake procedure in the format suggested.     
+</t>
+</list>
+</t>
+    
+<t>
+--------------------------------------------------------------
+</t>
+
+<t>
+**Kathleen Moriarty:**
+</t>
+<t>
+"I am still reading this draft, but don't see any response to the SecDir
+review that raised some very important points for discussion:
+
+http://www.ietf.org/mail-archive/web/secdir/current/msg04879.html
+
+I'll amend this when I get further into my review and would appreciate a
+response to the SecDir review."
+<list style="symbols">
+<t>
+Please see our responses to the SecDir review via email:
+http://www.ietf.org/mail-archive/web/secdir/current/msg04914.html
+and below. 
+</t>
+</list>
+</t>
+ 
+<t>
+--------------------------------------------------------------
+</t>
+    
+<t>
+**OpsDir review** by Tina TSOU (replied to by email, July 9th, 2014):
+</t>
+
+<t>
+"You probably want to mention SHA-256 rater than SHA-1 [...]"
+<list style="symbols">
+<t>
+SHA-256 made default. See reply to Farrell.     
+</t>
+</list>
+
+"Section 8.13: You should also include ULAs"
+<list style="symbols">
+<t>
+Added.     
+</t>
+</list>
+
+"Section 8.16: This doesn't seem like a good justification for not having flow 
+control. Could you please elaborate on why flow control is not needed for this 
+case?"
+<list style="symbols">
+<t>
+Explained in email reply.     
+</t>
+</list>
+     
+"Section 8.17, page 53: The channel ID values employed might give the reader 
+the impression that they are non-random."
+<list style="symbols">
+<t>
+Stated explicitly they must be random with a reference to why.     
+</t>
+</list>
+
+Nits
+<list style="symbols">
+<t>
+Processed
+</t>
+</list>
+
+
+</t>
+
+
+<t>
+--------------------------------------------------------------
+</t>
+
+
+<t>
+**GenArt review** by Christer Holmberg (replied to by email, July 9th, 2014) 
+</t>
+<t>
+"Q1: The sending of keep alives is a SHOULD, and there are no procedures on 
+how to act if keep alives are not received. There isn't even a mechanism to 
+negotiate the sending of keep alives.
+<list style="symbols">
+<t>
+Rewrote Section 3.12 to explain what happens when no keep alives are
+received. In particular, given certain conditions the peer is declared
+dead and no more messages are sent to it, and the local administration
+about that peer is discarded. The exact conditions were specified in Sec. 8.15
+but are now defined in 3.12 at Christer's suggestion in his follow-up to
+our reply. Section 8.15 removed.
+</t>
+</list>
+
+"Q2: As the sending of keep alives is a SHOULD, are there example cases when 
+keep alives would NOT be sent?"
+<list style="symbols">
+<t>
+Added example of busy server garbage collecting idle clients by not sending
+keep alives.     
+</t>
+</list>
+
+"Q3: The text saying "to each peer it wants to interact with in the future" 
+sounds a little strange to me. How does a peer know with whom it wants to 
+interact in the future? Perhaps the text instead should talk about peers with 
+whom one wants to maintain a signaling channel, or something like that?"    
+<list style="symbols">
+<t>
+Rephrased in Sec. 3.12 to "interesting peers" and explain there is a policy that
+determines which peers are of interest. E.g. peers that have chunks
+that the downloader is still missing.     
+</t>
+</list>
+
+</t>
+
+
+<t>
+--------------------------------------------------------------
+</t>
+
+
+<t>
+**SecDir review** by David Harrington (replied to by email, July 10th, 2014)
+</t>
+<t>
+Editorials:
+<list style="symbols">
+<t>
+Incorporated.
+</t>
+</list>
+
+"6) tech: I feel uncomfortable with section 2 containing examples that describe 
+the overall flow. Examples are non-normative text, usually contained in a 
+non-normative appendix. These examples describe the order of messages, and it is "
+<list style="symbols">
+<t>
+Please see our actions taken on Richard Barnes' DISCUSS.
+</t>
+</list>
+ 
+"7) in example 2.2, the integrity hash is provided by the peer that is 
+providing the (potentially maliciously modified) content. Isn't that like 
+asking the fox to verify that the henhouse is safe?"
+<list style="symbols">
+<t>
+Added that the hashes can be verified against the trusted swarm ID
+using the Merkle tree content integrity protection scheme, defined later
+in the document.
+</t>
+</list>
+
+
+"9) in 3, paragraph 1, it says "this behavior", but I'm not sure which 
+behavior it is referencing. It is unclear whether not sending error messages, 
+or discarding messages, or stopping communication, or classifying peers is 
+the behavior that allows a peer to deal with slow, crashed, or silent peers. 
+I don't understand HOW any of the behaviors mentioned would allow a peer to 
+deal with slow, crashed, or silent peers. I do not understand on what basis 
+peers are judged "good" or "bad"."
+<list style="symbols">
+<t>
+Added explanation how in a peer-to-peer system with multiple sources to obtain 
+the content from, the classification in good and bad can be used to deal 
+with malfunctioning peers.
+</t>
+</list>
+
+
+"11) in 3, paragraph 3, the second sentence seems to contradict the first 
+sentence, and since neither is written using RFC2119 keywords, it seems to 
+really leave the whole question open to implementer interpretation."
+<list style="symbols">
+<t>
+Added that the video container format used is outside the scope of this
+document.
+</t>
+</list>
+
+
+``"A SIGNED_INTEGRITY message (type 0x07) consists of a chunk
+   specification, a 64-bit NTP timestamp [RFC5905] and a digital
+   signature encoded as a Signature field in a RRSIG record in DNSSEC
+   without the BASE-64 encoding [RFC4034]."
+Can this work in an implementation with no NTP support?''
+<list style="symbols">
+<t>
+Yes. It is sufficient for the injector's and receivers' clocks to be roughly
+synchronized. Rephrased to "64-bit timestamp in NTP Timestamp format". 
+</t>
+</list>
+
+"8.14 describes a keep alive message format, but no processing instructions."
+<list style="symbols">
+<t>
+Please see our actions following the GenArt review.
+</t>
+</list>
+
+"Multiple messages are multiplexed in a datagram. How are the messages 
+delimited? If there is any corruption in one message, how does the receiver 
+find the end of the message and the start of the next message? If I understand 
+correctly, invalid messages are discarded and no error code is sent. If one of 
+the messages are found to be invalid, are all messages in that datagram 
+discarded? or are all subsequent messages in that datagram discarded? or is it 
+valid to process the remaining messages in the datagram after an invalid 
+message is detected? If so, would that conflict with the rule that all 
+messages must be processed in order?"
+<list style="symbols">
+<t>
+Messages are fixed size, or contain size fields. Made it more clear
+in Section 3 that when an invalid message is encountered in a datagram,
+the remaining messages MUST be discarded.
+</t>
+</list>
+
+</t>
+
+<t>
+--------------------------------------------------------------
+</t>
+
+<t>
+** COMMENTS by Spencer Dawkins, July 8th 2014**
+</t>
+
+<t>
+"3.  Messages
+
+   In general, no error codes or responses are used in the protocol;
+   absence of any response indicates an error.  
+
+Is there accurate qualifier more narrow than "in general" that you could
+substitute?"
+<list style="symbols">
+<t>
+Qualifier removed.
+</t>
+</list>
+
+"3.1.  HANDSHAKE
+
+[heavy/minor confusing]"
+<list style="symbols">
+<t>
+Heavy payload has been explicitly defined in Terminology. Please see our 
+response to Richard Barnes' DISCUSS for a rephrased definition of the handshake 
+procedure.
+</t>
+</list>
+
+
+"3.2.  HAVE
+
+   In particular, whenever a receiving peer P has successfully checked
+   the integrity of a chunk, or interval of chunks, it SHOULD send a
+                                                       ^^^^^^
+
+   HAVE message to all peers Q1..Qn it wants to interact with in the
+   near future.  A policy in peer P determines when the HAVE is sent.  P
+   may sent it directly, or peer P may wait until either it has other
+   data to sent to Qi, or until it has received and checked multiple
+   chunks.  
+
+This wasn't clear to me. I'm not understanding why a SHOULD is
+appropriate, but I suspect I shouldn't be askig a 2119 question, because
+this is tangled between "send a HAVE to the peers you want to interact
+with in the near future" and "if you don't want to interact with a
+specific peer in the near future, you can wait to send a HAVE". Is that
+even close?
+"
+<list style="symbols">
+<t>
+Yes. Changed to a MUST and rephrased that the HAVE is sent only to the
+peers the sender wants to allow download of those chunks from.
+</t>
+</list>
+
+"3.4.  ACK
+
+[unreliable/reliable discussion in WG]"
+<list style="symbols">
+<t>
+The swift protocol on which this draft is based had been designed from
+the start to be transport-agnostic. We tried to preserve that as much
+as possible.
+</t>
+</list>
+
+"5.3.  The Atomic Datagram Principle
+
+[...]
+
+With that many SHOULDs, I'd be worried that implementations using PPSPP
+can't count on much. If I receive a message that spans multiple datagrams
+(even though it shouldn't), that don't include the necessary hashes (even
+though it should), and I don't drop a message with missing data (even
+though I should), is that all fine?"
+<list style="symbols">
+<t>
+Yes. Unfortunately, there are some exceptional cases that have to be dealt 
+with. E.g. because of reordering you may want to hang on to a datagram with a 
+DATA message that cannot yet be verified because the datagram with the
+required hashes was delayed. In general, there will be multiple
+sources to obtain the content from, so a peer/implementor may choose to get the 
+chunks from a different source with a better path.
+</t>
+</list>
+
+"5.4.  INTEGRITY Messages
+
+   Concretely, a peer that wants to send a chunk of content creates a
+   datagram that MUST consist of a list of INTEGRITY messages followed
+   by a DATA message.  If the INTEGRITY messages and DATA message cannot
+   be put into a single datagram because of a limitation on datagram
+   size, the INTEGRITY messages MUST be sent first in one or more
+   datagrams.  
+
+Is this assuming that the path between peers will never reorder packets?"
+<list style="symbols">
+<t>
+No. Hence, the many SHOULDs in the previous Section. This facilitates 
+processing in the normal case. 
+</t>
+</list>
+
+</t>
+
+<t>
+--------------------------------------------------------------
+</t>
+
+<t>
+**COMMENT by Jari Arkko, July 8th 2014**
+<list style="symbols">
+<t>
+Please see responses to GenArt review.
+</t>
+</list>
+    
+</t>
+
+<t>
+--------------------------------------------------------------
+</t>
+
+
+<t>
+**COMMENTs by Barry Leiba, July 9th 2014**
+</t>
+
+<t>
+"General question on the chunking:
+Is it the case that a given piece of content is chunked in a specific
+way, with known chunk IDs, such that every peer that's serving that
+content up (at least in the same swarm) uses the same chunks with the
+same chunk IDs?  One can guess that from the way things work, but
+shouldn't the document say that?  Or does it, and I missed it?"
+<list style="symbols">
+<t>
+Explicitly stated this in Section 3.
+</t>
+</list>
+
+"-- Section 3.7 --
+
+   When peer Q receives multiple REQUESTs from the same peer
+   P, peer Q SHOULD process the REQUESTs in the order received.
+
+What happens if it doesn't?  Is there an interoperability issue here?  A
+performance issue?  Or what?  (That is, why is this a 2119 SHOULD?)"
+
+<list style="symbols">
+<t>
+Consider the case where peer P is operating near the playback deadline, i.e.,
+the last chunk it has needs to be given to the video player very soon or it 
+will stall (i.e., P has nearly run out of buffer). In that case it is
+important that the chunks P requests arrive in order (and it will be
+requesting a range of chunks at a time to get a pipeline going).
+So the SHOULD is there to help prevent a performance problem. 
+</t>
+</list>
+
+"-- Section 5.3 --
+
+   Thus, as a datagram carries zero or more messages, neither messages
+   nor message interdependencies SHOULD span over multiple datagrams.
+
+The negatives in this sentence really make the SHOULD a hidden SHOULD
+NOT, and its meaning is unclear.  I think it would be clearer if it were
+worded that way:"
+<list style="symbols">
+<t>
+Replaced with suggested wording.
+</t>
+</list>
+
+</t>
+
+<t>
+--------------------------------------------------------------
+</t>
+
+
+<t>
+**COMMENTs by Alia Atlas, July 9th 2014**
+</t>
+
+<t>
+<list style="symbols">
+<t>
+Requested modifications made.
+</t>
+</list>
+    
+"Sec 8.1: The paragraph on PLPMTUD is a bit confusing.  Presumably this
+is between two peers - but the chunk sizes used by the swarm would be
+specified by the initial seeder.  Thus I can see the PLPMTUD variant
+being useful to decide upon the PPSPP datagram size, but not the chunk
+size.  Could you please clarify either what I'm missing?"
+
+<list style="symbols">
+<t>
+This section discussed considerations for choosing a chunk size.    
+Deployments can use PLPMTUD, but in that case they should partition the
+content using a small chunk size, such that the datagram can be scaled up
+or down depending on the actual network properties.
+</t>
+</list>
+
+</t>
+
+<t>
+--------------------------------------------------------------
+</t>
+
+
+<t>
+**COMMENTs by Stephen Farrell, July 10th 2014**. 
+</t>
+
+<t>
+For DISCUSSes, please see above at revision -11.    
+</t>
+
+<t>
+"- The elephant is in the room, but not the intro:-) Surely
+some comparison with BT is needed in the intro?"
+<list style="symbols">
+<t>
+Paragraph added.
+</t>
+</list>
+
+"- 1.1: I really dislike the term self-certification as its
+quite misleading."
+<list style="symbols">
+<t>
+AFAIK the term was quite common for this type of mechanism,
+see e.g.  http://en.wikipedia.org/wiki/Self-certifying_File_System
+</t>
+</list>
+
+"- 1.3, 'content': s/asset/file/ would be better I think and
+less capitalist;-)"
+<list style="symbols">
+<t>
+Done. We had commercial partners in our research project ;-)
+</t>
+</list>
+
+"- 3: I don't get what is meant by this "an external storage
+mapping from the linear byte space of a single swarm to
+different files" I can sorta see what's meant, but am not
+sure. Maybe try clarify?"
+<list style="symbols">
+<t>
+In other words, we do not prescribe the video container format.
+Added to the paragraph.
+</t>
+</list>
+
+"- 5.3, last para: Is the 1st MUST there really implementable
+in general? I think the MUST might be to include those hashes
+that the sender thinks the receiver needs."
+<list style="symbols">
+<t>
+Clarified
+</t>
+</list>
+
+"- 6.1 - this defines two methods yet says "If the protocol
+operates in a benign environment the method MAY be used."
+Which is meant here?"
+<list style="symbols">
+<t>
+Clarified.
+</t>
+</list>
+
+"- 6.1.2.1: what if different folks think NCHUNKS_PER_SIG has
+different values? How do we all agree on a value? (BTW, the
+last sentence of this section is a cool thing.)"
+<list style="symbols">
+<t>
+This value is set by the content publisher, and is then derived from the chunk 
+specification of the signed munro hash by all peers.
+</t>
+</list>
+
+"- 7.4: "In other cases a peer MAY include a swarm identifier
+option, as an end-to-end check." That's not clear to me, what
+other cases?"
+<list style="symbols">
+<t>
+Rephrased.
+</t>
+</list>
+
+"- 7.8: The width of the figure seems wrong."
+<list style="symbols">
+<t>
+Corrected.
+</t>
+</list>
+
+"- 7.10: An example compressed encoding would be useful."
+<list style="symbols">
+<t>
+Added a small example.
+</t>
+</list>
+
+"- 8.16: "perfectly detected" - huh? what does that mean?"
+<list style="symbols">
+<t>
+Rephrased in revision -11.
+</t>
+</list>
+
+
+</t>
+
+
+<t>
+--------------------------------------------------------------
+</t>
+
+
+
 
 </list>
 </t>
